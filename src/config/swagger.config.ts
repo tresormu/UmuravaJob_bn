@@ -1,5 +1,12 @@
 // config/swagger.config.ts
 import swaggerJsdoc from "swagger-jsdoc";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, "..", "..");
+const port = process.env.PORT || "5000";
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -12,8 +19,8 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
-        url: "https://localhost:5000",
-        description: "Production server",
+        url: `http://localhost:${port}`,
+        description: "Local development server",
       },
     ],
     components: {
@@ -32,7 +39,10 @@ const options: swaggerJsdoc.Options = {
       },
     ],
   },
-  apis: ["./src/decorators/*.ts"],
+  apis: [
+    path.join(rootDir, "src", "Decorators", "*.ts").replace(/\\/g, "/"),
+    path.join(rootDir, "dist", "Decorators", "*.js").replace(/\\/g, "/"),
+  ],
 };
 
 const swaggerSpec = swaggerJsdoc(options);
