@@ -7,7 +7,7 @@ class ApplicantsController {
                 res.status(401).json({ message: "Unauthorized" });
                 return;
             }
-            const jobId = req.query.jobId;
+            const jobId = typeof req.query?.jobId === "string" ? req.query.jobId : undefined;
             if (jobId && !Types.ObjectId.isValid(jobId)) {
                 res.status(400).json({ message: "Invalid jobId" });
                 return;
