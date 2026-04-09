@@ -2,10 +2,10 @@
 import swaggerJsdoc from "swagger-jsdoc";
 import path from "path";
 import { fileURLToPath } from "url";
+import config from "./env.config.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..", "..");
-const port = process.env.PORT || "5000";
 const options = {
     definition: {
         openapi: "3.0.0",
@@ -16,7 +16,7 @@ const options = {
         },
         servers: [
             {
-                url: `http://localhost:${port}`,
+                url: `http://localhost:${config.port}`,
                 description: "Local development server",
             },
         ],

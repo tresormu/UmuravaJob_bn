@@ -42,6 +42,5 @@ const RecruiterSchema = new Schema({
     timestamps: true,
 });
 // Indexes
-RecruiterSchema.index({ email: 1 });
 export default model("Recruiter", RecruiterSchema);
 //# sourceMappingURL=Recruiter.model.js.map

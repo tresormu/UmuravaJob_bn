@@ -18,6 +18,8 @@ const config = {
   // Auth
   jwtSecret: requireEnv("JWT_SECRET"),
   expirationToken: (process.env.EXPIRATION_TOKEN) as StringValue,
+  refreshTokenSecret: requireEnv("REFRESH_TOKEN_SECRET"),
+  refreshTokenExpiresIn: requireEnv("REFRESH_TOKEN_EXPIRES_IN") as StringValue,
   saltRounds: Number(process.env.SALT_ROUNDS),
 
   // Cloudinary

@@ -4,6 +4,8 @@ declare const config: {
     readonly mongoUrl: string;
     readonly jwtSecret: string;
     readonly expirationToken: StringValue;
+    readonly refreshTokenSecret: string;
+    readonly refreshTokenExpiresIn: StringValue;
     readonly saltRounds: number;
     readonly cloudinary: {
         readonly cloudName: string;

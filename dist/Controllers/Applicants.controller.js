@@ -1,8 +1,23 @@
 import Applicant from "../Models/Applicant.model.js";
+import { Types } from "mongoose";
 class ApplicantsController {
     static async GetApplicants(req, res) {
         try {
-            const applicants = await Applicant.find();
+            if (!req.user) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+            const jobId = req.query.jobId;
+            if (jobId && !Types.ObjectId.isValid(jobId)) {
+                res.status(400).json({ message: "Invalid jobId" });
+                return;
+            }
+            const query = {
+                recruiterId: req.user.id,
+            };
+            if (jobId)
+                query.jobId = jobId;
+            const applicants = await Applicant.find(query);
             res.status(200).json({ applicants });
         }
         catch (error) {
@@ -11,8 +26,19 @@ class ApplicantsController {
     }
     static async GetApplicantById(req, res) {
         try {
-            const { id } = req.params;
-            const applicant = await Applicant.findById(id);
+            const id = req.params["id"];
+            if (!req.user) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+            if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
+                res.status(400).json({ message: "Invalid applicant id" });
+                return;
+            }
+            const applicant = await Applicant.findOne({
+                _id: id,
+                recruiterId: req.user.id,
+            });
             if (!applicant) {
                 res.status(404).json({ message: "Applicant not found" });
                 return;
@@ -25,17 +51,29 @@ class ApplicantsController {
     }
     static async CreateApplicant(req, res) {
         try {
-            const { jobId, recruiterId, fullName, email, phone, location, resumeUrl, resumeFileName, resumeText, linkedInUrl, portfolioUrl, structuredProfile, parsedData, normalized, status, source, sourceFileId, isParsed, parsedAt, recruiterNotes, tags, } = req.body;
-            const existing = email ? await Applicant.findOne({ email }) : null;
-            if (!jobId || !recruiterId || !fullName || !source) {
+            if (!req.user) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+            const { jobId, fullName, email, phone, location, resumeUrl, resumeFileName, resumeText, linkedInUrl, portfolioUrl, structuredProfile, parsedData, normalized, status, source, sourceFileId, isParsed, parsedAt, recruiterNotes, tags, } = req.body;
+            if (!jobId || !fullName || !source) {
                 res.status(400).json({
-                    message: "jobId, recruiterId, fullName, and source are required",
+                    message: "jobId, fullName, and source are required",
                 });
                 return;
             }
+            if (!Types.ObjectId.isValid(jobId)) {
+                res.status(400).json({ message: "Invalid jobId" });
+                return;
+            }
+            if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+                res.status(400).json({ message: "Invalid email" });
+                return;
+            }
+            const existing = email ? await Applicant.findOne({ email }) : null;
             const applicant = await Applicant.create({
                 jobId,
-                recruiterId,
+                recruiterId: req.user.id,
                 fullName,
                 email,
                 phone,
@@ -65,8 +103,55 @@ class ApplicantsController {
     }
     static async UpdateApplicant(req, res) {
         try {
-            const { id } = req.params;
-            const updatedApplicant = await Applicant.findByIdAndUpdate(id, { $set: req.body }, { new: true, runValidators: true });
+            const id = req.params["id"];
+            if (!req.user) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+            if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
+                res.status(400).json({ message: "Invalid applicant id" });
+                return;
+            }
+            const existingApplicant = await Applicant.findById(id);
+            if (!existingApplicant) {
+                res.status(404).json({ message: "Applicant not found" });
+                return;
+            }
+            if (String(existingApplicant.recruiterId) !== req.user.id) {
+                res.status(403).json({ message: "Access denied" });
+                return;
+            }
+            const allowedFields = [
+                "fullName",
+                "email",
+                "phone",
+                "location",
+                "resumeUrl",
+                "resumeFileName",
+                "resumeText",
+                "linkedInUrl",
+                "portfolioUrl",
+                "structuredProfile",
+                "parsedData",
+                "normalized",
+                "status",
+                "source",
+                "sourceFileId",
+                "isParsed",
+                "parsedAt",
+                "recruiterNotes",
+                "tags",
+            ];
+            const updateData = {};
+            for (const key of allowedFields) {
+                if (key in req.body)
+                    updateData[key] = req.body[key];
+            }
+            if (updateData.email && !/^\S+@\S+\.\S+$/.test(String(updateData.email))) {
+                res.status(400).json({ message: "Invalid email" });
+                return;
+            }
+            const updatedApplicant = await Applicant.findOneAndUpdate({ _id: id, recruiterId: req.user.id }, { $set: updateData }, { new: true, runValidators: true });
             if (!updatedApplicant) {
                 res.status(404).json({ message: "Applicant not found" });
                 return;
@@ -79,8 +164,28 @@ class ApplicantsController {
     }
     static async DeleteApplicant(req, res) {
         try {
-            const { id } = req.params;
-            const deleted = await Applicant.findByIdAndDelete(id);
+            const id = req.params["id"];
+            if (!req.user) {
+                res.status(401).json({ message: "Unauthorized" });
+                return;
+            }
+            if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
+                res.status(400).json({ message: "Invalid applicant id" });
+                return;
+            }
+            const existingApplicant = await Applicant.findById(id);
+            if (!existingApplicant) {
+                res.status(404).json({ message: "Applicant not found" });
+                return;
+            }
+            if (String(existingApplicant.recruiterId) !== req.user.id) {
+                res.status(403).json({ message: "Access denied" });
+                return;
+            }
+            const deleted = await Applicant.findOneAndDelete({
+                _id: id,
+                recruiterId: req.user.id,
+            });
             if (!deleted) {
                 res.status(404).json({ message: "Applicant not found" });
                 return;

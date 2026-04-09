@@ -25,7 +25,7 @@ export interface RecruiterAttrs {
   loginAttempts?: number;
   isLocked?: boolean;
   lockedUntil?: Date;
-  refreshToken?: string;
+  refreshToken?: string | undefined;
   preferredLanguage?: string;
   timezone?: string;
   notificationsEnabled?: boolean;

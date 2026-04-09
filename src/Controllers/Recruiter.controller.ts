@@ -1,6 +1,13 @@
 import Recruiter from "../Models/Recruiter.model.js";
 import HashMe from "../config/hash.config.js";
+import bcrypt from "bcryptjs";
 import type { Request, Response } from "express";
+import type { AuthRequest } from "../types/type.js";
+import {
+    GenerateToken,
+    GenerateRefreshToken,
+    VerifyRefreshToken,
+} from "../utils/token.js";
 
 class RecruiterController {
     /**
@@ -88,9 +95,12 @@ class RecruiterController {
     /**
      * Update a recruiter
      */
-    async updateRecruiter(req: Request, res: Response) {
+    async updateRecruiter(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
+            if (!req.user || req.user.id !== id) {
+                return res.status(403).json({ success: false, message: "Access denied" });
+            }
             const { firstName, lastName, email, password, phone, companyName, companyWebsite, position, bio } = req.body;
             
             // Prepare update object
@@ -124,9 +134,12 @@ class RecruiterController {
     /**
      * Delete a recruiter
      */
-    async deleteRecruiter(req: Request, res: Response) {
+    async deleteRecruiter(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
+            if (!req.user || req.user.id !== id) {
+                return res.status(403).json({ success: false, message: "Access denied" });
+            }
             const recruiter = await Recruiter.findByIdAndDelete(id);
             
             if (!recruiter) {
@@ -143,6 +156,156 @@ class RecruiterController {
                 success: false, 
                 message: "Failed to delete recruiter", 
                 error: error instanceof Error ? error.message : error 
+            });
+        }
+    }
+
+    /**
+     * Login recruiter
+     */
+    async loginRecruiter(req: Request, res: Response) {
+        try {
+            const { email, password } = req.body;
+            if (!email || !password) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email and password are required",
+                });
+            }
+
+            const recruiter = await Recruiter.findOne({ email });
+            if (!recruiter || !recruiter.password) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid credentials",
+                });
+            }
+
+            const isValid = await bcrypt.compare(password, recruiter.password);
+            if (!isValid) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid credentials",
+                });
+            }
+
+            const payload = {
+                id: recruiter.id,
+                role: recruiter.role,
+                email: recruiter.email,
+            };
+            const accessToken = GenerateToken(payload);
+            const refreshToken = GenerateRefreshToken(payload);
+
+            recruiter.refreshToken = refreshToken;
+            recruiter.lastLoginAt = new Date();
+            await recruiter.save();
+
+            const recruiterSafe = recruiter.toObject();
+            delete recruiterSafe.password;
+            delete recruiterSafe.refreshToken;
+
+            return res.status(200).json({
+                success: true,
+                message: "Login successful",
+                accessToken,
+                refreshToken,
+                recruiter: recruiterSafe,
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to login",
+                error: error instanceof Error ? error.message : error,
+            });
+        }
+    }
+
+    /**
+     * Refresh access token
+     */
+    async refreshRecruiterToken(req: Request, res: Response) {
+        try {
+            const { refreshToken } = req.body;
+            if (!refreshToken) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Refresh token is required",
+                });
+            }
+
+            let payload;
+            try {
+                payload = VerifyRefreshToken(refreshToken);
+            } catch {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid or expired refresh token",
+                });
+            }
+
+            const recruiter = await Recruiter.findById(payload.id);
+            if (!recruiter || recruiter.refreshToken !== refreshToken) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid or expired refresh token",
+                });
+            }
+
+            const newPayload = {
+                id: recruiter.id,
+                role: recruiter.role,
+                email: recruiter.email,
+            };
+            const accessToken = GenerateToken(newPayload);
+            const newRefreshToken = GenerateRefreshToken(newPayload);
+
+            recruiter.refreshToken = newRefreshToken;
+            await recruiter.save();
+
+            return res.status(200).json({
+                success: true,
+                message: "Token refreshed",
+                accessToken,
+                refreshToken: newRefreshToken,
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to refresh token",
+                error: error instanceof Error ? error.message : error,
+            });
+        }
+    }
+
+    /**
+     * Logout recruiter
+     */
+    async logoutRecruiter(req: Request, res: Response) {
+        try {
+            const { refreshToken } = req.body;
+            if (!refreshToken) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Refresh token is required",
+                });
+            }
+
+            const recruiter = await Recruiter.findOne({ refreshToken });
+            if (recruiter) {
+                recruiter.refreshToken = undefined;
+                await recruiter.save();
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "Logged out successfully",
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to logout",
+                error: error instanceof Error ? error.message : error,
             });
         }
     }

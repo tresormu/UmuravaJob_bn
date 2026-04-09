@@ -1,5 +1,7 @@
 import Recruiter from "../Models/Recruiter.model.js";
 import HashMe from "../config/hash.config.js";
+import bcrypt from "bcryptjs";
+import { GenerateToken, GenerateRefreshToken, VerifyRefreshToken, } from "../utils/token.js";
 class RecruiterController {
     /**
      * Create a new recruiter
@@ -84,6 +86,9 @@ class RecruiterController {
     async updateRecruiter(req, res) {
         try {
             const { id } = req.params;
+            if (!req.user || req.user.id !== id) {
+                return res.status(403).json({ success: false, message: "Access denied" });
+            }
             const { firstName, lastName, email, password, phone, companyName, companyWebsite, position, bio } = req.body;
             // Prepare update object
             const updateData = { firstName, lastName, email, phone, companyName, companyWebsite, position, bio };
@@ -115,6 +120,9 @@ class RecruiterController {
     async deleteRecruiter(req, res) {
         try {
             const { id } = req.params;
+            if (!req.user || req.user.id !== id) {
+                return res.status(403).json({ success: false, message: "Access denied" });
+            }
             const recruiter = await Recruiter.findByIdAndDelete(id);
             if (!recruiter) {
                 return res.status(404).json({ success: false, message: "Recruiter not found" });
@@ -130,6 +138,144 @@ class RecruiterController {
                 success: false,
                 message: "Failed to delete recruiter",
                 error: error instanceof Error ? error.message : error
+            });
+        }
+    }
+    /**
+     * Login recruiter
+     */
+    async loginRecruiter(req, res) {
+        try {
+            const { email, password } = req.body;
+            if (!email || !password) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email and password are required",
+                });
+            }
+            const recruiter = await Recruiter.findOne({ email });
+            if (!recruiter || !recruiter.password) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid credentials",
+                });
+            }
+            const isValid = await bcrypt.compare(password, recruiter.password);
+            if (!isValid) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid credentials",
+                });
+            }
+            const payload = {
+                id: recruiter.id,
+                role: recruiter.role,
+                email: recruiter.email,
+            };
+            const accessToken = GenerateToken(payload);
+            const refreshToken = GenerateRefreshToken(payload);
+            recruiter.refreshToken = refreshToken;
+            recruiter.lastLoginAt = new Date();
+            await recruiter.save();
+            const recruiterSafe = recruiter.toObject();
+            delete recruiterSafe.password;
+            delete recruiterSafe.refreshToken;
+            return res.status(200).json({
+                success: true,
+                message: "Login successful",
+                accessToken,
+                refreshToken,
+                recruiter: recruiterSafe,
+            });
+        }
+        catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to login",
+                error: error instanceof Error ? error.message : error,
+            });
+        }
+    }
+    /**
+     * Refresh access token
+     */
+    async refreshRecruiterToken(req, res) {
+        try {
+            const { refreshToken } = req.body;
+            if (!refreshToken) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Refresh token is required",
+                });
+            }
+            let payload;
+            try {
+                payload = VerifyRefreshToken(refreshToken);
+            }
+            catch {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid or expired refresh token",
+                });
+            }
+            const recruiter = await Recruiter.findById(payload.id);
+            if (!recruiter || recruiter.refreshToken !== refreshToken) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid or expired refresh token",
+                });
+            }
+            const newPayload = {
+                id: recruiter.id,
+                role: recruiter.role,
+                email: recruiter.email,
+            };
+            const accessToken = GenerateToken(newPayload);
+            const newRefreshToken = GenerateRefreshToken(newPayload);
+            recruiter.refreshToken = newRefreshToken;
+            await recruiter.save();
+            return res.status(200).json({
+                success: true,
+                message: "Token refreshed",
+                accessToken,
+                refreshToken: newRefreshToken,
+            });
+        }
+        catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to refresh token",
+                error: error instanceof Error ? error.message : error,
+            });
+        }
+    }
+    /**
+     * Logout recruiter
+     */
+    async logoutRecruiter(req, res) {
+        try {
+            const { refreshToken } = req.body;
+            if (!refreshToken) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Refresh token is required",
+                });
+            }
+            const recruiter = await Recruiter.findOne({ refreshToken });
+            if (recruiter) {
+                recruiter.refreshToken = undefined;
+                await recruiter.save();
+            }
+            return res.status(200).json({
+                success: true,
+                message: "Logged out successfully",
+            });
+        }
+        catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to logout",
+                error: error instanceof Error ? error.message : error,
             });
         }
     }
