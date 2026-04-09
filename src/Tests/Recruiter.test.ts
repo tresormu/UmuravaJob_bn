@@ -41,8 +41,9 @@ const mockResponse = () => {
 const mockRequest = (overrides: Partial<Request> = {}): Request => ({
     params: {},
     body: {},
+    user: { id: new Types.ObjectId().toString(), email: "test@test.com", role: "recruiter" },
     ...overrides,
-} as Request);
+} as any);
 
 describe("RecruiterController", () => {
     beforeEach(() => {
@@ -135,6 +136,9 @@ describe("RecruiterController", () => {
                 params: { id },
                 body: { firstName: "Jane", password: "newpassword" } 
             });
+            // Ensure security check pass by matching user ID with target ID
+            (req as any).user.id = id;
+
             const res = mockResponse();
             mockRecruiter.findByIdAndUpdate.mockResolvedValue({ _id: id });
 
@@ -148,6 +152,23 @@ describe("RecruiterController", () => {
             );
             expect(res.status).toHaveBeenCalledWith(200);
         });
+
+        it("should fail 403 if updating other recruiter", async () => {
+            const id = new Types.ObjectId().toString();
+            const otherId = new Types.ObjectId().toString();
+            const req = mockRequest({ 
+                params: { id },
+                body: { firstName: "Jane" } 
+            });
+            (req as any).user.id = otherId; // Different ID
+
+            const res = mockResponse();
+
+            await RecruiterController.updateRecruiter(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(mockRecruiter.findByIdAndUpdate).not.toHaveBeenCalled();
+        });
     });
 
     describe("deleteRecruiter", () => {
@@ -156,12 +177,29 @@ describe("RecruiterController", () => {
             mockRecruiter.findByIdAndDelete.mockResolvedValue({ _id: id });
             
             const req = mockRequest({ params: { id } });
+            // Ensure security check pass
+            (req as any).user.id = id;
+
             const res = mockResponse();
 
             await RecruiterController.deleteRecruiter(req, res);
 
             expect(mockRecruiter.findByIdAndDelete).toHaveBeenCalledWith(id);
             expect(res.status).toHaveBeenCalledWith(200);
+        });
+
+        it("should fail 403 if deleting other recruiter", async () => {
+            const id = new Types.ObjectId().toString();
+            const otherId = new Types.ObjectId().toString();
+            const req = mockRequest({ params: { id } });
+            (req as any).user.id = otherId;
+
+            const res = mockResponse();
+
+            await RecruiterController.deleteRecruiter(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(mockRecruiter.findByIdAndDelete).not.toHaveBeenCalled();
         });
     });
 });
