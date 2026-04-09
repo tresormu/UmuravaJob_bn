@@ -6,7 +6,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import config from "./config/env.config.js";
-import ApplicantsRoutes from "./Routes/Applicant.route.js"
+import ApplicantsRoutes from "./Routes/Applicant.route.js";
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -40,7 +40,8 @@ mongoose
   .then(() => console.log(" Connected to MongoDB Compass"))
   .catch((err) => console.error(" Connection error:", err));
 
-app.use("api/Applicants", ApplicantsRoutes)
+app.use("/applicants", ApplicantsRoutes);
 app.listen(config.port, () => {
   console.log(`Server is running on http://localhost:${config.port}`);
+  console.log(`Swagger is running on http://localhost:${config.port}/api-docs`)
 });
