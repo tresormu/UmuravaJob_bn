@@ -31,7 +31,7 @@ mongoose
     .connect(config.mongoUrl)
     .then(() => console.log(" Connected to MongoDB Compass"))
     .catch((err) => console.error(" Connection error:", err));
-app.use("/api/applicants", ApplicantsRoutes);
+app.use("/applicants", ApplicantsRoutes);
 app.listen(config.port, () => {
     console.log(`Server is running on http://localhost:${config.port}`);
     console.log(`Swagger is running on http://localhost:${config.port}/api-docs`);
