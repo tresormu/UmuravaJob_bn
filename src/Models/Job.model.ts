@@ -8,6 +8,7 @@ export interface IJob extends Document {
   experience: number;
   education?: string;
   location?: string;
+  recruiterId: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +45,11 @@ const JobSchema: Schema = new Schema(
     location: {
       type: String,
       default: "Remote",
+    },
+    recruiterId: {
+      type: Schema.Types.ObjectId,
+      ref: "Recruiter",
+      required: true,
     },
   },
   {

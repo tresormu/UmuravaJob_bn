@@ -6,6 +6,7 @@ export interface IJob extends Document {
     experience: number;
     education?: string;
     location?: string;
+    recruiterId: mongoose.Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;
 }
