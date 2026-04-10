@@ -26,6 +26,11 @@ const JobSchema = new Schema({
         type: String,
         default: "Remote",
     },
+    recruiterId: {
+        type: Schema.Types.ObjectId,
+        ref: "Recruiter",
+        required: true,
+    },
 }, {
     timestamps: true, // adds createdAt & updatedAt
 });
