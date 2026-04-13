@@ -14,8 +14,8 @@ export interface RecruiterAttrs {
     profilePicture?: string;
     bio?: string;
     isEmailVerified: boolean;
-    emailVerificationToken?: string;
-    emailVerificationExpires?: Date;
+    emailVerificationToken?: string | undefined;
+    emailVerificationExpires?: Date | undefined;
     passwordResetToken?: string;
     passwordResetExpires?: Date;
     lastLoginAt?: Date;

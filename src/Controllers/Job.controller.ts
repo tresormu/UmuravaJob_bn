@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { Types } from "mongoose";
 import Job from "../Models/Job.model.js";
 import type { AuthRequest } from "../types/type.js";
+import { sendJobPostedEmail } from "../utils/email.js";
 
 class JobController {
   /**
@@ -24,16 +25,34 @@ class JobController {
 
       const { title, description, skills, experience, education, location } =
         req.body;
+      if (!title || typeof title !== "string") {
+        return res.status(400).json({ success: false, message: "title is required" });
+      }
+      if (!Array.isArray(skills) || skills.length === 0) {
+        return res.status(400).json({ success: false, message: "skills are required" });
+      }
+      const expNum = Number(experience);
+      if (!Number.isFinite(expNum) || expNum < 0) {
+        return res.status(400).json({ success: false, message: "experience is invalid" });
+      }
 
       const job = await Job.create({
         title,
         description,
         skills,
-        experience,
+        experience: expNum,
         education,
         location,
         recruiterId: req.user.id,
       });
+
+      if (req.user.email) {
+        try {
+          await sendJobPostedEmail(req.user.email, job.title);
+        } catch (emailError) {
+          console.error("Failed to send job posted email", emailError);
+        }
+      }
 
       return res.status(201).json({
         success: true,
@@ -54,11 +73,21 @@ class JobController {
    */
   async getAllJobs(_req: Request, res: Response) {
     try {
-      const jobs = await Job.find().sort({ createdAt: -1 });
+      const page = Number.parseInt(String(_req.query.page ?? 1), 10) || 1;
+      const limit = Number.parseInt(String(_req.query.limit ?? 20), 10) || 20;
+
+      const [total, jobs] = await Promise.all([
+        Job.countDocuments(),
+        Job.find()
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit),
+      ]);
 
       return res.status(200).json({
         success: true,
         data: jobs,
+        pagination: { page, limit, total },
       });
     } catch (error) {
       return res.status(500).json({
@@ -148,6 +177,19 @@ class JobController {
 
       const updateData = { ...req.body };
       delete (updateData as { recruiterId?: unknown }).recruiterId;
+      if (updateData.title && typeof updateData.title !== "string") {
+        return res.status(400).json({ success: false, message: "Invalid title" });
+      }
+      if (updateData.skills && (!Array.isArray(updateData.skills) || updateData.skills.length === 0)) {
+        return res.status(400).json({ success: false, message: "Invalid skills" });
+      }
+      if (updateData.experience !== undefined) {
+        const expNum = Number(updateData.experience);
+        if (!Number.isFinite(expNum) || expNum < 0) {
+          return res.status(400).json({ success: false, message: "Invalid experience" });
+        }
+        updateData.experience = expNum;
+      }
 
       const updatedJob = await Job.findByIdAndUpdate(id, updateData, {
         new: true,

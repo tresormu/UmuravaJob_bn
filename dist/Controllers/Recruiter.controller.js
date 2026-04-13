@@ -1,16 +1,46 @@
 import Recruiter from "../Models/Recruiter.model.js";
 import HashMe from "../config/hash.config.js";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import { sendRecruiterDeletionEmail, sendVerificationEmail } from "../utils/email.js";
 import { GenerateToken, GenerateRefreshToken, VerifyRefreshToken, } from "../utils/token.js";
 class RecruiterController {
+    generateVerificationCode() {
+        return String(crypto.randomInt(100000, 1000000));
+    }
+    hashToken(value) {
+        return crypto.createHash("sha256").update(value).digest("hex");
+    }
     /**
      * Create a new recruiter
      */
     async createRecruiter(req, res) {
         try {
             const { firstName, lastName, email, password, phone, companyName, companyWebsite, position, bio } = req.body;
+            if (!firstName || !lastName || !email || !password) {
+                return res.status(400).json({
+                    success: false,
+                    message: "firstName, lastName, email, and password are required",
+                });
+            }
+            if (!/^\S+@\S+\.\S+$/.test(email)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid email",
+                });
+            }
+            const existing = await Recruiter.findOne({ email });
+            if (existing) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Email already in use",
+                });
+            }
             // Hash the password before saving
             const hashedPassword = await HashMe(password);
+            const verificationCode = this.generateVerificationCode();
+            const verificationHash = this.hashToken(verificationCode);
+            const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
             const recruiter = await Recruiter.create({
                 firstName,
                 lastName,
@@ -20,11 +50,15 @@ class RecruiterController {
                 companyName,
                 companyWebsite,
                 position,
-                bio
+                bio,
+                isEmailVerified: false,
+                emailVerificationToken: verificationHash,
+                emailVerificationExpires: expiresAt,
             });
+            await sendVerificationEmail(email, verificationCode);
             return res.status(201).json({
                 success: true,
-                message: "Recruiter created successfully",
+                message: "Recruiter created successfully. Verification code sent.",
                 recruiter
             });
         }
@@ -127,6 +161,12 @@ class RecruiterController {
             if (!recruiter) {
                 return res.status(404).json({ success: false, message: "Recruiter not found" });
             }
+            try {
+                await sendRecruiterDeletionEmail(recruiter.email, recruiter.firstName);
+            }
+            catch (emailError) {
+                console.error("Failed to send recruiter deletion email", emailError);
+            }
             return res.status(200).json({
                 success: true,
                 message: "Recruiter deleted successfully",
@@ -158,6 +198,12 @@ class RecruiterController {
                 return res.status(401).json({
                     success: false,
                     message: "Invalid credentials",
+                });
+            }
+            if (!recruiter.isEmailVerified) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Email not verified",
                 });
             }
             const isValid = await bcrypt.compare(password, recruiter.password);
@@ -275,6 +321,110 @@ class RecruiterController {
             return res.status(500).json({
                 success: false,
                 message: "Failed to logout",
+                error: error instanceof Error ? error.message : error,
+            });
+        }
+    }
+    /**
+     * Verify recruiter email
+     */
+    async verifyRecruiterEmail(req, res) {
+        try {
+            const { email, code } = req.body;
+            if (!email || !code) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email and code are required",
+                });
+            }
+            const recruiter = await Recruiter.findOne({ email });
+            if (!recruiter) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Recruiter not found",
+                });
+            }
+            if (recruiter.isEmailVerified) {
+                return res.status(200).json({
+                    success: true,
+                    message: "Email already verified",
+                });
+            }
+            if (!recruiter.emailVerificationToken || !recruiter.emailVerificationExpires) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Verification code not found",
+                });
+            }
+            if (recruiter.emailVerificationExpires.getTime() < Date.now()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Verification code expired",
+                });
+            }
+            const codeHash = this.hashToken(code);
+            if (codeHash !== recruiter.emailVerificationToken) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid verification code",
+                });
+            }
+            recruiter.isEmailVerified = true;
+            recruiter.emailVerificationToken = undefined;
+            recruiter.emailVerificationExpires = undefined;
+            await recruiter.save();
+            return res.status(200).json({
+                success: true,
+                message: "Email verified successfully",
+            });
+        }
+        catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to verify email",
+                error: error instanceof Error ? error.message : error,
+            });
+        }
+    }
+    /**
+     * Resend verification code
+     */
+    async resendVerificationCode(req, res) {
+        try {
+            const { email } = req.body;
+            if (!email) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email is required",
+                });
+            }
+            const recruiter = await Recruiter.findOne({ email });
+            if (!recruiter) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Recruiter not found",
+                });
+            }
+            if (recruiter.isEmailVerified) {
+                return res.status(200).json({
+                    success: true,
+                    message: "Email already verified",
+                });
+            }
+            const verificationCode = this.generateVerificationCode();
+            recruiter.emailVerificationToken = this.hashToken(verificationCode);
+            recruiter.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000);
+            await recruiter.save();
+            await sendVerificationEmail(email, verificationCode);
+            return res.status(200).json({
+                success: true,
+                message: "Verification code resent",
+            });
+        }
+        catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to resend verification code",
                 error: error instanceof Error ? error.message : error,
             });
         }

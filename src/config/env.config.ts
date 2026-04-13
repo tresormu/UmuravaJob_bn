@@ -8,9 +8,20 @@ const requireEnv = (key: string): string => {
   return value;
 };
 
+const parseCorsOrigins = (): string[] | undefined => {
+  const raw = process.env.CORS_ORIGINS;
+  if (!raw) return undefined;
+  const origins = raw
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return origins.length > 0 ? origins : undefined;
+};
+
 const config = {
   // Server
   port: Number(process.env.PORT),
+  corsOrigins: parseCorsOrigins(),
 
   // Database
   mongoUrl: requireEnv("MONGO_URL"),
@@ -31,8 +42,12 @@ const config = {
 
   // Email
   email: {
-    apiKey: requireEnv("RESEND_API_KEY"),
     from: requireEnv("EMAIL_FROM"),
+    smtpHost: requireEnv("EMAIL_HOST"),
+    smtpPort: Number(process.env.EMAIL_PORT),
+    smtpUser: requireEnv("EMAIL_USER"),
+    smtpPass: requireEnv("EMAIL_PASSWORD"),
+    smtpSecure: requireEnv("SMTP_SECURE"),
   },
 
 } as const;

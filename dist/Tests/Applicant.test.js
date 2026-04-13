@@ -1,8 +1,9 @@
 import { jest } from "@jest/globals";
 import { createMockApplicant } from "./createMockApplicant.js";
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 const mockApplicant = {
     find: jest.fn(),
+    countDocuments: jest.fn(),
     findById: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
@@ -11,16 +12,41 @@ const mockApplicant = {
     findOneAndUpdate: jest.fn(),
     findOneAndDelete: jest.fn(),
 };
-['find', 'findById', 'findOne', 'create', 'findByIdAndUpdate', 'findByIdAndDelete', 'findOneAndUpdate', 'findOneAndDelete'].forEach(method => {
+['find', 'countDocuments', 'findById', 'findOne', 'create', 'findByIdAndUpdate', 'findByIdAndDelete', 'findOneAndUpdate', 'findOneAndDelete'].forEach(method => {
     mockApplicant[method].mockImplementation(async () => null);
 });
 jest.unstable_mockModule("../Models/Applicant.model.js", () => ({
     __esModule: true,
     default: mockApplicant,
 }));
+const mockJob = {
+    findById: jest.fn(),
+};
+const mockCandidate = {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    updateOne: jest.fn(),
+};
+const mockApplication = {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    updateOne: jest.fn(),
+};
+jest.unstable_mockModule("../Models/Job.model.js", () => ({
+    __esModule: true,
+    default: mockJob,
+}));
+jest.unstable_mockModule("../Models/Candidate.model.js", () => ({
+    __esModule: true,
+    default: mockCandidate,
+}));
+jest.unstable_mockModule("../Models/Application.model.js", () => ({
+    __esModule: true,
+    default: mockApplication,
+}));
 let ApplicantsController;
 beforeAll(async () => {
-    ({ default: ApplicantsController } = await import("../Controllers/Applicants.controller.js"));
+    ({ default: ApplicantsController } = await import("../Controllers/Application.controller.js"));
 });
 const MOCK_USER_ID = new Types.ObjectId().toString();
 const mockResponse = () => {
@@ -38,8 +64,24 @@ const mockRequest = (overrides = {}) => ({
 describe("ApplicantsController", () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        ['find', 'findById', 'findOne', 'create', 'findByIdAndUpdate', 'findByIdAndDelete', 'findOneAndUpdate', 'findOneAndDelete'].forEach(method => {
+        ['find', 'countDocuments', 'findById', 'findOne', 'create', 'findByIdAndUpdate', 'findByIdAndDelete', 'findOneAndUpdate', 'findOneAndDelete'].forEach(method => {
             mockApplicant[method].mockImplementation(async () => null);
+        });
+        mockApplicant.countDocuments.mockResolvedValue(1);
+        mockJob.findById.mockResolvedValue({ _id: new Types.ObjectId(), recruiterId: MOCK_USER_ID });
+        mockCandidate.findOne.mockReturnValue({
+            session: jest.fn().mockResolvedValue(null),
+        });
+        mockCandidate.create.mockResolvedValue([{ _id: new Types.ObjectId() }]);
+        mockApplication.findOne.mockReturnValue({
+            session: jest.fn().mockResolvedValue(null),
+        });
+        mockApplication.create.mockResolvedValue([{ _id: new Types.ObjectId() }]);
+        jest.spyOn(mongoose, "startSession").mockResolvedValue({
+            withTransaction: async (fn) => {
+                await fn();
+            },
+            endSession: jest.fn(),
         });
     });
     describe("GetApplicants", () => {
@@ -54,7 +96,10 @@ describe("ApplicantsController", () => {
                     isParsed: false,
                     isDuplicate: false,
                 }];
-            mockApplicant.find.mockResolvedValueOnce(applicants);
+            const limit = jest.fn().mockResolvedValue(applicants);
+            const skip = jest.fn().mockReturnValue({ limit });
+            const sort = jest.fn().mockReturnValue({ skip });
+            mockApplicant.find.mockReturnValue({ sort });
             const req = mockRequest();
             const res = mockResponse();
             await ApplicantsController.GetApplicants(req, res);
@@ -62,11 +107,14 @@ describe("ApplicantsController", () => {
                 recruiterId: MOCK_USER_ID,
             });
             expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({ applicants });
+            expect(res.json).toHaveBeenCalledWith({
+                applicants,
+                pagination: { page: 1, limit: 20, total: 1 },
+            });
         });
         it("handles error", async () => {
             const error = new Error("DB error");
-            mockApplicant.find.mockRejectedValueOnce(error);
+            mockApplicant.countDocuments.mockRejectedValueOnce(error);
             const req = mockRequest();
             const res = mockResponse();
             await ApplicantsController.GetApplicants(req, res);
@@ -142,23 +190,27 @@ describe("ApplicantsController", () => {
                 isParsed: false,
                 isDuplicate: false,
             });
-            mockApplicant.create.mockResolvedValue(createMockApplicant({
-                jobId: jobIdObj,
-                recruiterId: recruiterIdObj,
-                fullName: "Jane Doe",
-                email: "jane@example.com",
-                status: "applied",
-                source: "manual",
-                isParsed: false,
-                isDuplicate: true,
-            }));
+            mockApplicant.create.mockResolvedValue([
+                createMockApplicant({
+                    jobId: jobIdObj,
+                    recruiterId: recruiterIdObj,
+                    fullName: "Jane Doe",
+                    email: "jane@example.com",
+                    status: "applied",
+                    source: "manual",
+                    isParsed: false,
+                    isDuplicate: true,
+                }),
+            ]);
             await ApplicantsController.CreateApplicant(req, res);
             expect(mockApplicant.findOne).toHaveBeenCalledWith({ email: "jane@example.com" });
-            expect(mockApplicant.create).toHaveBeenCalledWith(expect.objectContaining({
-                jobId,
-                recruiterId: MOCK_USER_ID,
-                isDuplicate: true,
-            }));
+            expect(mockApplicant.create).toHaveBeenCalledWith([
+                expect.objectContaining({
+                    jobId,
+                    recruiterId: MOCK_USER_ID,
+                    isDuplicate: true,
+                }),
+            ], expect.any(Object));
             expect(res.status).toHaveBeenCalledWith(201);
             expect(res.json).toHaveBeenCalledWith({ applicant: expect.any(Object) });
         });
@@ -185,10 +237,12 @@ describe("ApplicantsController", () => {
                 },
             });
             const res = mockResponse();
-            mockApplicant.create.mockResolvedValue(createMockApplicant({ jobId: new Types.ObjectId(), isDuplicate: false }));
+            mockApplicant.create.mockResolvedValue([createMockApplicant({ jobId: new Types.ObjectId(), isDuplicate: false })]);
             await ApplicantsController.CreateApplicant(req, res);
             expect(mockApplicant.findOne).not.toHaveBeenCalled();
-            expect(mockApplicant.create).toHaveBeenCalledWith(expect.objectContaining({ isDuplicate: false, recruiterId: MOCK_USER_ID }));
+            expect(mockApplicant.create).toHaveBeenCalledWith([
+                expect.objectContaining({ isDuplicate: false, recruiterId: MOCK_USER_ID }),
+            ], expect.any(Object));
             expect(res.status).toHaveBeenCalledWith(201);
         });
         it("handles create error", async () => {
@@ -211,10 +265,10 @@ describe("ApplicantsController", () => {
             const updateId = new Types.ObjectId().toString();
             const req = mockRequest({
                 params: { id: updateId },
-                body: { status: "reviewed" }
+                body: { status: "screened" }
             });
             const res = mockResponse();
-            const updated = createMockApplicant({ status: "reviewed" });
+            const updated = createMockApplicant({ status: "screened" });
             updated._id = new Types.ObjectId(updateId);
             mockApplicant.findById.mockResolvedValue({
                 _id: updateId,
