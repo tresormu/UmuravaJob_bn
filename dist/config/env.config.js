@@ -6,9 +6,20 @@ const requireEnv = (key) => {
         throw new Error(`Missing required environment variable: ${key}`);
     return value;
 };
+const parseCorsOrigins = () => {
+    const raw = process.env.CORS_ORIGINS;
+    if (!raw)
+        return undefined;
+    const origins = raw
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+    return origins.length > 0 ? origins : undefined;
+};
 const config = {
     // Server
     port: Number(process.env.PORT),
+    corsOrigins: parseCorsOrigins(),
     // Database
     mongoUrl: requireEnv("MONGO_URL"),
     // Auth
@@ -25,8 +36,12 @@ const config = {
     },
     // Email
     email: {
-        apiKey: requireEnv("RESEND_API_KEY"),
         from: requireEnv("EMAIL_FROM"),
+        smtpHost: requireEnv("SMTP_HOST"),
+        smtpPort: Number(process.env.SMTP_PORT),
+        smtpUser: requireEnv("SMTP_USER"),
+        smtpPass: requireEnv("SMTP_PASS"),
+        smtpSecure: process.env.SMTP_SECURE === "true",
     },
 };
 export default config;

@@ -23,6 +23,7 @@ const NormalizedScoresSchema = new Schema({
 const ApplicantSchema = new Schema({
     jobId: { type: Schema.Types.ObjectId, ref: "Job", required: true },
     recruiterId: { type: Schema.Types.ObjectId, ref: "Recruiter", required: true },
+    applicationId: { type: Schema.Types.ObjectId, ref: "Application" },
     fullName: { type: String, required: true, trim: true },
     email: { type: String, trim: true, lowercase: true },
     phone: { type: String, trim: true },

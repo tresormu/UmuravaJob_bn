@@ -47,16 +47,15 @@
  *         application/json:
  *           schema:
  *             type: object
- *             required: [jobId, recruiterId, fullName, source]
+ *             required: [jobId, fullName, source]
  *             properties:
  *               jobId:
- *                 type: string
- *               recruiterId:
  *                 type: string
  *               fullName:
  *                 type: string
  *               email:
  *                 type: string
+ *                 format: email
  *               phone:
  *                 type: string
  *               location:
@@ -96,7 +95,7 @@
  *                   type: string
  *     responses:
  *       201:
- *         description: Applicant created
+ *         description: Applicant created. Application and candidate are linked.
  *       400:
  *         description: Invalid request body
  */

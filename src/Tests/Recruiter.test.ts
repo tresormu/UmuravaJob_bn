@@ -12,6 +12,12 @@ const mockRecruiter: any = {
 };
 
 const mockHashMe = jest.fn() as jest.MockedFunction<(pass: string) => Promise<string>>;
+const mockSendVerificationEmail = jest.fn() as jest.MockedFunction<
+    (email: string, code: string) => Promise<unknown>
+>;
+const mockSendRecruiterDeletionEmail = jest.fn() as jest.MockedFunction<
+    (email: string, firstName?: string) => Promise<unknown>
+>;
 
 // Mock dependencies before importing the controller
 jest.unstable_mockModule("../Models/Recruiter.model.js", () => ({
@@ -22,6 +28,12 @@ jest.unstable_mockModule("../Models/Recruiter.model.js", () => ({
 jest.unstable_mockModule("../config/hash.config.js", () => ({
     __esModule: true,
     default: mockHashMe,
+}));
+
+jest.unstable_mockModule("../utils/email.js", () => ({
+    __esModule: true,
+    sendVerificationEmail: mockSendVerificationEmail,
+    sendRecruiterDeletionEmail: mockSendRecruiterDeletionEmail,
 }));
 
 let RecruiterController: typeof import("../Controllers/Recruiter.controller.js").default;
@@ -49,6 +61,8 @@ describe("RecruiterController", () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockHashMe.mockImplementation(async (p) => `hashed_${p}`);
+        mockSendVerificationEmail.mockImplementation(async () => ({}));
+        mockSendRecruiterDeletionEmail.mockImplementation(async () => ({}));
     });
 
     describe("createRecruiter", () => {
@@ -71,6 +85,7 @@ describe("RecruiterController", () => {
             expect(mockRecruiter.create).toHaveBeenCalledWith(expect.objectContaining({
                 password: "hashed_password123"
             }));
+            expect(mockSendVerificationEmail).toHaveBeenCalled();
             expect(res.status).toHaveBeenCalledWith(201);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
         });
@@ -174,7 +189,11 @@ describe("RecruiterController", () => {
     describe("deleteRecruiter", () => {
         it("should delete recruiter", async () => {
             const id = new Types.ObjectId().toString();
-            mockRecruiter.findByIdAndDelete.mockResolvedValue({ _id: id });
+            mockRecruiter.findByIdAndDelete.mockResolvedValue({
+                _id: id,
+                email: "john@example.com",
+                firstName: "John",
+            });
             
             const req = mockRequest({ params: { id } });
             // Ensure security check pass
@@ -185,6 +204,10 @@ describe("RecruiterController", () => {
             await RecruiterController.deleteRecruiter(req, res);
 
             expect(mockRecruiter.findByIdAndDelete).toHaveBeenCalledWith(id);
+            expect(mockSendRecruiterDeletionEmail).toHaveBeenCalledWith(
+                "john@example.com",
+                "John",
+            );
             expect(res.status).toHaveBeenCalledWith(200);
         });
 

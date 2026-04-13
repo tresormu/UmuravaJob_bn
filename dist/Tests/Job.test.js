@@ -14,6 +14,11 @@ jest.unstable_mockModule("../Models/Job.model.js", () => ({
     __esModule: true,
     default: mockJob,
 }));
+const mockSendJobPostedEmail = jest.fn();
+jest.unstable_mockModule("../utils/email.js", () => ({
+    __esModule: true,
+    sendJobPostedEmail: mockSendJobPostedEmail,
+}));
 let JobController;
 beforeAll(async () => {
     ({ default: JobController } = await import("../Controllers/Job.controller.js"));
@@ -34,6 +39,7 @@ const mockRequest = (overrides = {}) => ({
 describe("JobController", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockSendJobPostedEmail.mockImplementation(async () => ({}));
         ["create", "find", "findById", "findByIdAndUpdate", "findByIdAndDelete"].forEach((method) => {
             mockJob[method].mockImplementation(async () => null);
         });
@@ -82,6 +88,7 @@ describe("JobController", () => {
                 experience: 3,
                 recruiterId: MOCK_USER_ID,
             }));
+            expect(mockSendJobPostedEmail).toHaveBeenCalledWith("test@test.com", "Backend Dev");
             expect(res.status).toHaveBeenCalledWith(201);
             expect(res.json).toHaveBeenCalledWith({
                 success: true,

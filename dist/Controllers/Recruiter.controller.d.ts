@@ -1,6 +1,8 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../types/type.js";
 declare class RecruiterController {
+    private generateVerificationCode;
+    private hashToken;
     /**
      * Create a new recruiter
      */
@@ -33,6 +35,14 @@ declare class RecruiterController {
      * Logout recruiter
      */
     logoutRecruiter(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    /**
+     * Verify recruiter email
+     */
+    verifyRecruiterEmail(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    /**
+     * Resend verification code
+     */
+    resendVerificationCode(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 }
 declare const _default: RecruiterController;
 export default _default;

@@ -36,7 +36,7 @@ export {};
  *                 type: string
  *     responses:
  *       201:
- *         description: Job created successfully
+ *         description: Job created successfully. Posting confirmation email sent.
  *       500:
  *         description: Error creating job
  */

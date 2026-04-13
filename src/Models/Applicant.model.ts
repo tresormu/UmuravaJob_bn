@@ -31,6 +31,7 @@ export interface NormalizedScores {
 export interface ApplicantAttrs {
   jobId: Types.ObjectId;
   recruiterId: Types.ObjectId;
+  applicationId?: Types.ObjectId;
   fullName: string;
   email?: string;
   phone?: string;
@@ -93,6 +94,7 @@ const ApplicantSchema = new Schema<ApplicantAttrs>(
   {
     jobId: { type: Schema.Types.ObjectId, ref: "Job", required: true },
     recruiterId: { type: Schema.Types.ObjectId, ref: "Recruiter", required: true },
+    applicationId: { type: Schema.Types.ObjectId, ref: "Application" },
     fullName: { type: String, required: true, trim: true },
     email: { type: String, trim: true, lowercase: true },
     phone: { type: String, trim: true },

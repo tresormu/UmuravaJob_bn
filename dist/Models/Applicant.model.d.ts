@@ -25,6 +25,7 @@ export interface NormalizedScores {
 export interface ApplicantAttrs {
     jobId: Types.ObjectId;
     recruiterId: Types.ObjectId;
+    applicationId?: Types.ObjectId;
     fullName: string;
     email?: string;
     phone?: string;
