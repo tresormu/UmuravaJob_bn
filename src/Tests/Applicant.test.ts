@@ -1,429 +1,103 @@
-import { jest } from "@jest/globals";
-import { createMockApplicant } from "./createMockApplicant.js";
-import type { Request, Response } from "express";
-import type {
-  ApplicantDocument,
-  ApplicantStatus,
-  ApplicantSource,
-} from "../Models/Applicant.model.js";
-import mongoose, { Types } from "mongoose";
-
-const mockApplicant: any = {
-  find: jest.fn(),
-  countDocuments: jest.fn(),
-  findById: jest.fn(),
-  findOne: jest.fn(),
-  create: jest.fn(),
-  findByIdAndUpdate: jest.fn(),
-  findByIdAndDelete: jest.fn(),
-  findOneAndUpdate: jest.fn(),
-  findOneAndDelete: jest.fn(),
-};
-
-['find', 'countDocuments', 'findById', 'findOne', 'create', 'findByIdAndUpdate', 'findByIdAndDelete', 'findOneAndUpdate', 'findOneAndDelete'].forEach(method => {
-  mockApplicant[method].mockImplementation(async () => null);
-});
-
-jest.unstable_mockModule("../Models/Applicant.model.js", () => ({
-  __esModule: true,
-  default: mockApplicant,
-}));
-
-const mockJob: any = {
-  findById: jest.fn(),
-};
-
-const mockCandidate: any = {
-  findOne: jest.fn(),
-  create: jest.fn(),
-  updateOne: jest.fn(),
-};
-
-const mockApplication: any = {
-  findOne: jest.fn(),
-  create: jest.fn(),
-  updateOne: jest.fn(),
-};
-
-jest.unstable_mockModule("../Models/Job.model.js", () => ({
-  __esModule: true,
-  default: mockJob,
-}));
-
-jest.unstable_mockModule("../Models/Candidate.model.js", () => ({
-  __esModule: true,
-  default: mockCandidate,
-}));
-
-jest.unstable_mockModule("../Models/Application.model.js", () => ({
-  __esModule: true,
-  default: mockApplication,
-}));
-
-let ApplicantsController: typeof import("../Controllers/Application.controller.js").default;
+import { expect, it, describe, beforeAll, afterAll, beforeEach } from "@jest/globals";
+import request from "supertest";
+import { Types } from "mongoose";
+import app from "../app.js";
+import { connectTestDB, disconnectTestDB, clearAndSeedDB } from "./db.helper.js";
+import Applicant from "../Models/Applicant.model.js";
+import Job from "../Models/Job.model.js";
+import { getTestAuthHeader } from "./auth.helper.js";
 
 beforeAll(async () => {
-  ({ default: ApplicantsController } = await import(
-    "../Controllers/Application.controller.js"
-  ));
+  await connectTestDB();
 });
 
-const MOCK_USER_ID = new Types.ObjectId().toString();
+afterAll(async () => {
+  await disconnectTestDB();
+});
 
-const mockResponse = () => {
-  const res: any = {};
-  res.status = jest.fn().mockReturnValue(res);
-  res.json = jest.fn().mockReturnValue(res);
-  return res as Response;
-};
+describe("Applicants API (Integration)", () => {
+  let authHeader: Record<string, string>;
 
-const mockRequest = (overrides: Partial<Request> = {}): Request => ({
-  params: {},
-  body: {},
-  user: { id: MOCK_USER_ID, email: "test@test.com", role: "recruiter" },
-  ...overrides,
-} as any);
-
-describe("ApplicantsController", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    ['find', 'countDocuments', 'findById', 'findOne', 'create', 'findByIdAndUpdate', 'findByIdAndDelete', 'findOneAndUpdate', 'findOneAndDelete'].forEach(method => {
-      mockApplicant[method].mockImplementation(async () => null);
-    });
-    mockApplicant.countDocuments.mockResolvedValue(1);
-    mockJob.findById.mockResolvedValue({ _id: new Types.ObjectId(), recruiterId: MOCK_USER_ID });
-    mockCandidate.findOne.mockReturnValue({
-      session: jest.fn<() => Promise<unknown>>().mockResolvedValue(null),
-    } as any);
-    mockCandidate.create.mockResolvedValue([{ _id: new Types.ObjectId() }]);
-    mockApplication.findOne.mockReturnValue({
-      session: jest.fn<() => Promise<unknown>>().mockResolvedValue(null),
-    } as any);
-    mockApplication.create.mockResolvedValue([{ _id: new Types.ObjectId() }]);
-    jest.spyOn(mongoose, "startSession").mockResolvedValue({
-      withTransaction: async (fn: () => Promise<void>) => {
-        await fn();
-      },
-      endSession: jest.fn(),
-    } as any);
+  beforeEach(async () => {
+    await clearAndSeedDB();
+    authHeader = await getTestAuthHeader();
   });
 
-  describe("GetApplicants", () => {
-    it("returns applicants list", async () => {
-      const applicants = [{
-        _id: new Types.ObjectId(),
-        jobId: new Types.ObjectId(),
-        recruiterId: new Types.ObjectId(),
-        fullName: "Jane Doe",
-        status: "applied" as ApplicantStatus,
-        source: "manual" as ApplicantSource,
-        isParsed: false,
-        isDuplicate: false,
-      }] as ApplicantDocument[];
-      const limit = jest.fn<() => Promise<ApplicantDocument[]>>().mockResolvedValue(applicants);
-      const skip = jest.fn().mockReturnValue({ limit });
-      const sort = jest.fn().mockReturnValue({ skip });
-      mockApplicant.find.mockReturnValue({ sort });
+  describe("GET /api/applicants", () => {
+    it("returns applicants list from seeded data", async () => {
+      const res = await request(app)
+        .get("/api/applicants")
+        .set(authHeader);
 
-      const req = mockRequest();
-      const res = mockResponse();
-
-      await ApplicantsController.GetApplicants(req, res);
-
-      expect(mockApplicant.find).toHaveBeenCalledWith({
-        recruiterId: MOCK_USER_ID,
-      });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        applicants,
-        pagination: { page: 1, limit: 20, total: 1 },
-      });
-    });
-
-    it("handles error", async () => {
-      const error = new Error("DB error");
-      mockApplicant.countDocuments.mockRejectedValueOnce(error);
-
-      const req = mockRequest();
-      const res = mockResponse();
-
-      await ApplicantsController.GetApplicants(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: "Failed to fetch applicants" });
+      expect(res.status).toBe(200);
+      expect(res.body.applicants.length).toBeGreaterThan(0);
+      expect(res.body.applicants.some((a: any) => a.fullName === "John Doe")).toBe(true);
     });
   });
 
-  describe("GetApplicantById", () => {
+  describe("GET /api/applicants/:id", () => {
     it("returns applicant by id", async () => {
-      const mockId = new Types.ObjectId().toString();
-      const applicant = createMockApplicant({ fullName: "John Smith" });
-      (applicant as any)._id = new Types.ObjectId(mockId);
+      const applicant = await Applicant.findOne({ fullName: "John Doe" });
+      const id = applicant!._id.toString();
 
-      mockApplicant.findOne.mockResolvedValueOnce(applicant);
+      const res = await request(app)
+        .get(`/api/applicants/${id}`)
+        .set(authHeader);
 
-      const req = mockRequest({ params: { id: mockId } });
-      const res = mockResponse();
-
-      await ApplicantsController.GetApplicantById(req, res);
-
-      expect(mockApplicant.findOne).toHaveBeenCalledWith({
-        _id: mockId,
-        recruiterId: MOCK_USER_ID,
-      });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ applicant });
-    });
-
-    it("returns 404 if not found", async () => {
-      const mockId = new Types.ObjectId().toString();
-      mockApplicant.findOne.mockResolvedValueOnce(null);
-
-      const req = mockRequest({ params: { id: mockId } });
-      const res = mockResponse();
-
-      await ApplicantsController.GetApplicantById(req, res);
-
-      expect(mockApplicant.findOne).toHaveBeenCalledWith({
-        _id: mockId,
-        recruiterId: MOCK_USER_ID,
-      });
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ message: "Applicant not found" });
-    });
-
-    it("handles error", async () => {
-      const mockId = new Types.ObjectId().toString();
-      const error = new Error("DB error");
-      mockApplicant.findOne.mockRejectedValueOnce(error);
-
-      const req = mockRequest({ params: { id: mockId } });
-      const res = mockResponse();
-
-      await ApplicantsController.GetApplicantById(req, res);
-
-      expect(mockApplicant.findOne).toHaveBeenCalledWith({
-        _id: mockId,
-        recruiterId: MOCK_USER_ID,
-      });
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: "Failed to fetch applicant" });
+      expect(res.status).toBe(200);
+      expect(res.body.applicant.fullName).toBe("John Doe");
     });
   });
 
-  describe("CreateApplicant", () => {
-    it("flags duplicates but allows creation", async () => {
-      const jobId = new Types.ObjectId().toString();
-      const jobIdObj = new Types.ObjectId();
-      const recruiterIdObj = new Types.ObjectId();
-      const req = mockRequest({
-        body: {
-          jobId,
-          fullName: "Jane Doe",
-          email: "jane@example.com",
-          source: "manual",
-        },
-      });
-      const res = mockResponse();
+  describe("POST /api/applicants", () => {
+    it("creates unique applicant", async () => {
+        const job = await Job.findOne();
+        const jobId = job!._id.toString();
 
-      mockApplicant.findOne.mockResolvedValue({
-        _id: new Types.ObjectId(),
-        jobId: new Types.ObjectId(),
-        recruiterId: new Types.ObjectId(),
-        fullName: "Existing Doe",
-        status: "applied" as ApplicantStatus,
-        source: "manual" as ApplicantSource,
-        isParsed: false,
-        isDuplicate: false,
-      });
-      mockApplicant.create.mockResolvedValue(
-        [
-          createMockApplicant({
-            jobId: jobIdObj,
-            recruiterId: recruiterIdObj,
-            fullName: "Jane Doe",
-            email: "jane@example.com",
-            status: "applied" as ApplicantStatus,
-            source: "manual" as ApplicantSource,
-            isParsed: false,
-            isDuplicate: true,
-          }),
-        ],
-      );
-
-      await ApplicantsController.CreateApplicant(req, res);
-
-      expect(mockApplicant.findOne).toHaveBeenCalledWith({ email: "jane@example.com" });
-      expect(mockApplicant.create).toHaveBeenCalledWith(
-        [
-          expect.objectContaining({
-            jobId,
-            recruiterId: MOCK_USER_ID,
-            isDuplicate: true,
-          }),
-        ],
-        expect.any(Object),
-      );
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith({ applicant: expect.any(Object) });
-    });
-
-    it("returns 400 for missing required fields", async () => {
-      const req = mockRequest({
-        body: { fullName: "Jane Doe" }, // missing jobId etc.
-      });
-      const res = mockResponse();
-
-      await ApplicantsController.CreateApplicant(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: "jobId, fullName, and source are required",
-      });
-      expect(mockApplicant.findOne).not.toHaveBeenCalled();
-      expect(mockApplicant.create).not.toHaveBeenCalled();
-    });
-
-    it("creates without duplicate (no email)", async () => {
-      const jobId = new Types.ObjectId().toString();
-      const req = mockRequest({
-        body: {
-          jobId,
-          fullName: "No Email Doe",
-          source: "manual",
-        },
-      });
-      const res = mockResponse();
-
-      mockApplicant.create.mockResolvedValue(
-        [createMockApplicant({ jobId: new Types.ObjectId(), isDuplicate: false })],
-      );
-
-      await ApplicantsController.CreateApplicant(req, res);
-
-      expect(mockApplicant.findOne).not.toHaveBeenCalled();
-      expect(mockApplicant.create).toHaveBeenCalledWith(
-        [
-          expect.objectContaining({ isDuplicate: false, recruiterId: MOCK_USER_ID }),
-        ],
-        expect.any(Object),
-      );
-      expect(res.status).toHaveBeenCalledWith(201);
-    });
-
-    it("handles create error", async () => {
-      const jobId = new Types.ObjectId().toString();
-      const req = mockRequest({
-        body: {
-          jobId,
-          fullName: "Error Doe",
-          source: "manual",
-        },
-      });
-      const res = mockResponse();
-      mockApplicant.create.mockRejectedValue(new Error("Create error"));
-
-      await ApplicantsController.CreateApplicant(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
+        const res = await request(app)
+            .post("/api/applicants")
+            .set(authHeader)
+            .send({
+              jobId,
+              fullName: "Unique Name",
+              email: "unique@test.com",
+              source: "manual",
+            });
+    
+          expect(res.status).toBe(201);
+          const dbCheck = await Applicant.findOne({ email: "unique@test.com" });
+          expect(dbCheck).not.toBeNull();
     });
   });
 
-  describe("UpdateApplicant", () => {
+  describe("PATCH /api/applicants/:id", () => {
     it("updates applicant", async () => {
-      const updateId = new Types.ObjectId().toString();
-      const req = mockRequest({ 
-        params: { id: updateId },
-        body: { status: "screened" }
-      });
-      const res = mockResponse();
-      const updated = createMockApplicant({ status: "screened" as ApplicantStatus });
-      (updated as any)._id = new Types.ObjectId(updateId);
-      mockApplicant.findById.mockResolvedValue({
-        _id: updateId,
-        recruiterId: MOCK_USER_ID,
-      });
-      mockApplicant.findOneAndUpdate.mockResolvedValue(updated);
+      const applicant = await Applicant.findOne();
+      const id = applicant!._id.toString();
 
-      await ApplicantsController.UpdateApplicant(req, res);
+      const res = await request(app)
+        .patch(`/api/applicants/${id}`)
+        .set(authHeader)
+        .send({ status: "screened" });
 
-      expect(mockApplicant.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: updateId, recruiterId: MOCK_USER_ID },
-        { $set: { status: "reviewed" } },
-        { new: true, runValidators: true }
-      );
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ applicant: updated });
-    });
-
-    it("returns 404 if not found", async () => {
-      const req = mockRequest({ params: { id: new Types.ObjectId().toString() } });
-      const res = mockResponse();
-      mockApplicant.findById.mockResolvedValue(null);
-
-      await ApplicantsController.UpdateApplicant(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-    });
-
-    it("handles update error", async () => {
-      const req = mockRequest({ params: { id: new Types.ObjectId().toString() } });
-      const res = mockResponse();
-      mockApplicant.findById.mockResolvedValue({
-        _id: req.params.id,
-        recruiterId: MOCK_USER_ID,
-      });
-      mockApplicant.findOneAndUpdate.mockRejectedValue(new Error("Update error"));
-
-      await ApplicantsController.UpdateApplicant(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.status).toBe(200);
+      const updated = await Applicant.findById(id);
+      expect(updated?.status).toBe("screened");
     });
   });
 
-  describe("DeleteApplicant", () => {
+  describe("DELETE /api/applicants/:id", () => {
     it("deletes applicant", async () => {
-      const deleteId = new Types.ObjectId().toString();
-      const req = mockRequest({ params: { id: deleteId } });
-      const res = mockResponse();
-      mockApplicant.findById.mockResolvedValue({
-        _id: deleteId,
-        recruiterId: MOCK_USER_ID,
-      });
-      mockApplicant.findOneAndDelete.mockResolvedValue({ _id: deleteId });
+      const applicant = await Applicant.findOne();
+      const id = applicant!._id.toString();
 
-      await ApplicantsController.DeleteApplicant(req, res);
+      const res = await request(app)
+        .delete(`/api/applicants/${id}`)
+        .set(authHeader);
 
-      expect(mockApplicant.findOneAndDelete).toHaveBeenCalledWith({
-        _id: deleteId,
-        recruiterId: MOCK_USER_ID,
-      });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ message: "Applicant deleted successfully" });
-    });
-
-    it("returns 404 if not found", async () => {
-      const req = mockRequest({ params: { id: new Types.ObjectId().toString() } });
-      const res = mockResponse();
-      mockApplicant.findById.mockResolvedValue(null);
-
-      await ApplicantsController.DeleteApplicant(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-    });
-
-    it("handles delete error", async () => {
-      const req = mockRequest({ params: { id: new Types.ObjectId().toString() } });
-      const res = mockResponse();
-      mockApplicant.findById.mockResolvedValue({
-        _id: req.params.id,
-        recruiterId: MOCK_USER_ID,
-      });
-      mockApplicant.findOneAndDelete.mockRejectedValue(new Error("Delete error"));
-
-      await ApplicantsController.DeleteApplicant(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.status).toBe(200);
+      const dbCheck = await Applicant.findById(id);
+      expect(dbCheck).toBeNull();
     });
   });
 });

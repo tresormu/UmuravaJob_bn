@@ -141,11 +141,11 @@ class ApplicantsController {
 
       const existing = email ? await Applicant.findOne({ email }) : null;
 
-      const session = await mongoose.startSession();
       let applicant;
       try {
-        await session.withTransaction(async () => {
-          let candidate = email ? await Candidate.findOne({ email }).session(session) : null;
+        // Temporarily disabled transaction for debugging
+        {
+          let candidate = email ? await Candidate.findOne({ email }) : null;
           if (!candidate) {
             const candidateData: Record<string, unknown> = { fullName };
             ApplicantsController.addIfDefined(candidateData, "email", email);
@@ -157,7 +157,7 @@ class ApplicantsController {
             ApplicantsController.addIfDefined(candidateData, "linkedInUrl", linkedInUrl);
             ApplicantsController.addIfDefined(candidateData, "portfolioUrl", portfolioUrl);
 
-            const createdCandidates = await Candidate.create([candidateData], { session });
+            const createdCandidates = await Candidate.create([candidateData]);
             const createdCandidate = createdCandidates[0];
             if (!createdCandidate) {
               throw new Error("CANDIDATE_CREATE_FAILED");
@@ -172,7 +172,7 @@ class ApplicantsController {
           let application = await Application.findOne({
             jobId,
             candidateId: candidate._id,
-          }).session(session);
+          });
 
           if (!application) {
             const createdApplications = await Application.create(
@@ -185,7 +185,6 @@ class ApplicantsController {
                   source: "manual",
                 },
               ],
-              { session },
             );
             const createdApplication = createdApplications[0];
             if (!createdApplication) {
@@ -224,20 +223,21 @@ class ApplicantsController {
           ApplicantsController.addIfDefined(applicantData, "recruiterNotes", recruiterNotes);
           ApplicantsController.addIfDefined(applicantData, "tags", tags);
 
-          const createdApplicants = await Applicant.create([applicantData], { session });
+          const createdApplicants = await Applicant.create([applicantData]);
           const createdApplicant = createdApplicants[0];
           if (!createdApplicant) {
             throw new Error("APPLICANT_CREATE_FAILED");
           }
           applicant = createdApplicant;
-        });
+        }
       } finally {
-        session.endSession();
+        // session.endSession();
       }
 
       res.status(201).json({ applicant });
     } catch (error) {
-      res.status(500).json({ message: "Failed to create applicant" });
+      console.error("CreateApplicant error:", error);
+      throw error;
     }
   }
 

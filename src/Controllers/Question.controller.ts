@@ -67,7 +67,7 @@ class QuestionController {
 
       const question = await Question.create(createData);
 
-      return res.status(201).json({ question });
+      return res.status(201).json({ data: question, question });
     } catch (error) {
       return res.status(500).json({ message: "Failed to create question" });
     }

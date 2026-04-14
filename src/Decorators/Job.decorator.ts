@@ -7,7 +7,7 @@
 
 /**
  * @openapi
- * /api/job:
+ * /api/jobs:
  *   post:
  *     summary: Create a new job
  *     tags: [Jobs]
@@ -43,7 +43,7 @@
 
 /**
  * @openapi
- * /api/job:
+ * /api/jobs:
  *   get:
  *     summary: Get all jobs
  *     tags: [Jobs]
@@ -56,7 +56,7 @@
 
 /**
  * @openapi
- * /api/job/{id}:
+ * /api/jobs/{id}:
  *   get:
  *     summary: Get a job by ID
  *     tags: [Jobs]
@@ -79,7 +79,7 @@
 
 /**
  * @openapi
- * /api/job/{id}:
+ * /api/jobs/{id}:
  *   put:
  *     summary: Update a job by ID
  *     tags: [Jobs]
@@ -124,7 +124,7 @@
 
 /**
  * @openapi
- * /api/job/{id}:
+ * /api/jobs/{id}:
  *   delete:
  *     summary: Delete a job by ID
  *     tags: [Jobs]

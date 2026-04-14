@@ -11,7 +11,7 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "Umurava API Documentation",
+      title: "Umurava AI Hackathon API Documentation",
       version: "1.0.0",
       description:
         "A complete REST API for a job screening-focused implementation",
@@ -38,10 +38,7 @@ const options: swaggerJsdoc.Options = {
       },
     ],
   },
-  apis: [
-    path.join(rootDir, "src", "Decorators", "*.ts").replace(/\\/g, "/"),
-    path.join(rootDir, "dist", "Decorators", "*.js").replace(/\\/g, "/"),
-  ],
+  apis: ["./src/Decorators/*.ts", "./dist/Decorators/*.js"],
 };
 
 const swaggerSpec = swaggerJsdoc(options);

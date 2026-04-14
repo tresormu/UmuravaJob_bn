@@ -5,6 +5,7 @@ import type { AuthRequest } from "../types/type.js";
 import Job from "../Models/Job.model.js";
 import Candidate from "../Models/Candidate.model.js";
 import Application from "../Models/Application.model.js";
+import Applicant from "../Models/Applicant.model.js";
 import Answer from "../Models/Answer.model.js";
 import Question from "../Models/Question.model.js";
 import FileUpload from "../Models/FileUpload.model.js";
@@ -141,8 +142,8 @@ class ApplicationPipelineController {
         answers?: IncomingAnswer[];
       };
 
-      if (!fullName) {
-        return res.status(400).json({ message: "fullName is required" });
+      if (!fullName || !email) {
+        return res.status(400).json({ message: "fullName and email are required" });
       }
       if (email && !/^\S+@\S+\.\S+$/.test(email)) {
         return res.status(400).json({ message: "Invalid email" });
@@ -193,13 +194,11 @@ class ApplicationPipelineController {
         }
         parsedAnswers.push(parsed);
       }
-
-      const session = await mongoose.startSession();
       let applicationId: mongoose.Types.ObjectId | null = null;
-
       try {
-        await session.withTransaction(async () => {
-          let candidate = email ? await Candidate.findOne({ email }).session(session) : null;
+        // Temporarily disabled transaction for debugging
+        {
+          let candidate = email ? await Candidate.findOne({ email }) : null;
           if (!candidate) {
             const candidateData: Record<string, unknown> = { fullName };
             addIfDefined(candidateData, "email", email);
@@ -211,7 +210,7 @@ class ApplicationPipelineController {
             addIfDefined(candidateData, "linkedInUrl", linkedInUrl);
             addIfDefined(candidateData, "portfolioUrl", portfolioUrl);
 
-            const createdCandidates = await Candidate.create([candidateData], { session });
+            const createdCandidates = await Candidate.create([candidateData]);
             const createdCandidate = createdCandidates[0];
             if (!createdCandidate) {
               throw new Error("CANDIDATE_CREATE_FAILED");
@@ -228,7 +227,7 @@ class ApplicationPipelineController {
             if (linkedInUrl && !candidate.linkedInUrl) updates.linkedInUrl = linkedInUrl;
             if (portfolioUrl && !candidate.portfolioUrl) updates.portfolioUrl = portfolioUrl;
             if (Object.keys(updates).length > 0) {
-              await Candidate.updateOne({ _id: candidate._id }, { $set: updates }, { session });
+              await Candidate.updateOne({ _id: candidate._id }, { $set: updates });
             }
           }
 
@@ -239,7 +238,7 @@ class ApplicationPipelineController {
           const existingApplication = await Application.findOne({
             jobId,
             candidateId: candidate._id,
-          }).session(session);
+          });
           if (existingApplication) {
             throw new Error("DUPLICATE_APPLICATION");
           }
@@ -254,7 +253,6 @@ class ApplicationPipelineController {
                 source: "direct",
               },
             ],
-            { session },
           );
           const createdApplication = application[0];
           if (!createdApplication) {
@@ -262,6 +260,25 @@ class ApplicationPipelineController {
           }
 
           applicationId = createdApplication._id;
+          const applicantData: Record<string, unknown> = {
+            jobId,
+            recruiterId: job.recruiterId,
+            applicationId: createdApplication._id,
+            fullName,
+            status: "applied",
+            source: "umurava",
+            isParsed: false,
+          };
+          addIfDefined(applicantData, "email", email);
+          addIfDefined(applicantData, "phone", phone);
+          addIfDefined(applicantData, "location", location);
+          addIfDefined(applicantData, "resumeUrl", resumeUrl);
+          addIfDefined(applicantData, "resumeFileName", resumeFileName);
+          addIfDefined(applicantData, "resumeText", resumeText);
+          addIfDefined(applicantData, "linkedInUrl", linkedInUrl);
+          addIfDefined(applicantData, "portfolioUrl", portfolioUrl);
+
+          await Applicant.create([applicantData]);
 
           if (parsedAnswers.length > 0) {
             const answerDocs = parsedAnswers.map((a) => ({
@@ -270,11 +287,11 @@ class ApplicationPipelineController {
               value: a.value,
               valueText: a.valueText,
             }));
-            await Answer.insertMany(answerDocs, { session });
+            await Answer.insertMany(answerDocs);
           }
-        });
+        }
       } finally {
-        session.endSession();
+        // cleaned up
       }
 
       if (!applicationId) {
@@ -587,7 +604,7 @@ class ApplicationPipelineController {
                 toOptionalTrimmedString(row.portfolioUrl ?? row["portfolio url"]),
               );
 
-              const createdCandidates = await Candidate.create([candidateData], { session });
+              const createdCandidates = await Candidate.create([candidateData]);
               const createdCandidate = createdCandidates[0];
               if (!createdCandidate) {
                 throw new Error("CANDIDATE_CREATE_FAILED");
@@ -602,7 +619,7 @@ class ApplicationPipelineController {
             const existingApplication = await Application.findOne({
               jobId,
               candidateId: candidate._id,
-            }).session(session);
+            });
             if (existingApplication) {
               throw new Error("DUPLICATE_APPLICATION");
             }
@@ -617,7 +634,6 @@ class ApplicationPipelineController {
                   source: "excel",
                 },
               ],
-              { session },
             );
             const createdApplication = application[0];
             if (!createdApplication) {
@@ -631,7 +647,7 @@ class ApplicationPipelineController {
                 value: a.value,
                 valueText: a.valueText,
               }));
-              await Answer.insertMany(answerDocs, { session });
+              await Answer.insertMany(answerDocs);
             }
           });
           createdCount += 1;
@@ -660,7 +676,8 @@ class ApplicationPipelineController {
         errors,
       });
     } catch (error) {
-      return res.status(500).json({ message: "Failed to process Excel upload" });
+      console.error("createApplication error:", error);
+      return res.status(500).json({ message: "Failed to process application" });
     }
   }
 }

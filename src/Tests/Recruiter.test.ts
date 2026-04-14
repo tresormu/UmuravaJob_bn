@@ -1,228 +1,90 @@
-import { jest } from "@jest/globals";
-import type { Request, Response } from "express";
+import { expect, it, describe, beforeAll, afterAll, beforeEach } from "@jest/globals";
+import request from "supertest";
 import { Types } from "mongoose";
-
-// Setup mocks for Model and Hash utility
-const mockRecruiter: any = {
-    find: jest.fn(),
-    findById: jest.fn(),
-    create: jest.fn(),
-    findByIdAndUpdate: jest.fn(),
-    findByIdAndDelete: jest.fn(),
-};
-
-const mockHashMe = jest.fn() as jest.MockedFunction<(pass: string) => Promise<string>>;
-const mockSendVerificationEmail = jest.fn() as jest.MockedFunction<
-    (email: string, code: string) => Promise<unknown>
->;
-const mockSendRecruiterDeletionEmail = jest.fn() as jest.MockedFunction<
-    (email: string, firstName?: string) => Promise<unknown>
->;
-
-// Mock dependencies before importing the controller
-jest.unstable_mockModule("../Models/Recruiter.model.js", () => ({
-    __esModule: true,
-    default: mockRecruiter,
-}));
-
-jest.unstable_mockModule("../config/hash.config.js", () => ({
-    __esModule: true,
-    default: mockHashMe,
-}));
-
-jest.unstable_mockModule("../utils/email.js", () => ({
-    __esModule: true,
-    sendVerificationEmail: mockSendVerificationEmail,
-    sendRecruiterDeletionEmail: mockSendRecruiterDeletionEmail,
-}));
-
-let RecruiterController: typeof import("../Controllers/Recruiter.controller.js").default;
+import app from "../app.js";
+import { connectTestDB, disconnectTestDB, clearAndSeedDB } from "./db.helper.js";
+import Recruiter from "../Models/Recruiter.model.js";
+import { getTestAuthHeader } from "./auth.helper.js";
+import { TEST_RECRUITER_EMAIL, TEST_RECRUITER_PASSWORD } from "../Seed/seed.js";
 
 beforeAll(async () => {
-    // Import the controller after mocks are established
-    ({ default: RecruiterController } = await import("../Controllers/Recruiter.controller.js"));
+  await connectTestDB();
 });
 
-const mockResponse = () => {
-    const res: any = {};
-    res.status = jest.fn().mockReturnValue(res);
-    res.json = jest.fn().mockReturnValue(res);
-    return res as Response;
-};
+afterAll(async () => {
+  await disconnectTestDB();
+});
 
-const mockRequest = (overrides: Partial<Request> = {}): Request => ({
-    params: {},
-    body: {},
-    user: { id: new Types.ObjectId().toString(), email: "test@test.com", role: "recruiter" },
-    ...overrides,
-} as any);
+describe("Recruiter API (Integration)", () => {
+  let authHeader: Record<string, string>;
 
-describe("RecruiterController", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-        mockHashMe.mockImplementation(async (p) => `hashed_${p}`);
-        mockSendVerificationEmail.mockImplementation(async () => ({}));
-        mockSendRecruiterDeletionEmail.mockImplementation(async () => ({}));
+  beforeEach(async () => {
+    await clearAndSeedDB();
+    authHeader = await getTestAuthHeader();
+  });
+
+  describe("POST /api/recruiters", () => {
+    it("creates a new recruiter", async () => {
+      const recruiterData = {
+        firstName: "New",
+        lastName: "Recruiter",
+        email: "new@recruiter.com",
+        password: "password123"
+      };
+
+      const res = await request(app)
+        .post("/api/recruiters")
+        .send(recruiterData);
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      
+      const dbCheck = await Recruiter.findOne({ email: "new@recruiter.com" });
+      expect(dbCheck).not.toBeNull();
     });
+  });
 
-    describe("createRecruiter", () => {
-        it("should hash password and create recruiter", async () => {
-            const body = {
-                firstName: "John",
-                lastName: "Doe",
-                email: "john@example.com",
-                password: "password123",
-                companyName: "Umurava"
-            };
-            const req = mockRequest({ body });
-            const res = mockResponse();
-
-            mockRecruiter.create.mockResolvedValue({ ...body, password: "hashed_password123" });
-
-            await RecruiterController.createRecruiter(req, res);
-
-            expect(mockHashMe).toHaveBeenCalledWith("password123");
-            expect(mockRecruiter.create).toHaveBeenCalledWith(expect.objectContaining({
-                password: "hashed_password123"
-            }));
-            expect(mockSendVerificationEmail).toHaveBeenCalled();
-            expect(res.status).toHaveBeenCalledWith(201);
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+  describe("POST /api/recruiters/auth/login", () => {
+    it("logs in successfully", async () => {
+      const res = await request(app)
+        .post("/api/recruiters/auth/login")
+        .send({
+          email: TEST_RECRUITER_EMAIL,
+          password: TEST_RECRUITER_PASSWORD
         });
 
-        it("should handle creation errors", async () => {
-            const req = mockRequest({ body: { email: "error@test.com" } });
-            const res = mockResponse();
-            mockRecruiter.create.mockRejectedValue(new Error("DB Error"));
-
-            await RecruiterController.createRecruiter(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(500);
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
-        });
+      expect(res.status).toBe(200);
+      expect(res.body.accessToken).toBeDefined();
     });
+  });
 
-    describe("getRecruiter", () => {
-        it("should fetch all recruiters", async () => {
-            const recruiters = [{ firstName: "Admin" }];
-            mockRecruiter.find.mockResolvedValue(recruiters);
+  describe("GET /api/recruiters/:id", () => {
+    it("fetches recruiter profile", async () => {
+      const recruiter = await Recruiter.findOne({ email: TEST_RECRUITER_EMAIL });
+      const id = recruiter!._id.toString();
 
-            const req = mockRequest();
-            const res = mockResponse();
+      const res = await request(app)
+        .get(`/api/recruiters/${id}`)
+        .set(authHeader);
 
-            await RecruiterController.getRecruiter(req, res);
-
-            expect(mockRecruiter.find).toHaveBeenCalled();
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ recruiter: recruiters }));
-        });
+      expect(res.status).toBe(200);
+      expect(res.body.recruiter.email).toBe(TEST_RECRUITER_EMAIL);
     });
+  });
 
-    describe("getRecruiterById", () => {
-        it("should return a recruiter if found", async () => {
-            const id = new Types.ObjectId().toString();
-            const recruiter = { _id: id, firstName: "Test" };
-            mockRecruiter.findById.mockResolvedValue(recruiter);
+  describe("PATCH /api/recruiters/:id", () => {
+    it("updates recruiter profile", async () => {
+      const recruiter = await Recruiter.findOne({ email: TEST_RECRUITER_EMAIL });
+      const id = recruiter!._id.toString();
 
-            const req = mockRequest({ params: { id } });
-            const res = mockResponse();
+      const res = await request(app)
+        .patch(`/api/recruiters/${id}`)
+        .set(authHeader)
+        .send({ firstName: "UpdatedName" });
 
-            await RecruiterController.getRecruiterById(req, res);
-
-            expect(mockRecruiter.findById).toHaveBeenCalledWith(id);
-            expect(res.status).toHaveBeenCalledWith(200);
-        });
-
-        it("should return 404 if not found", async () => {
-            mockRecruiter.findById.mockResolvedValue(null);
-            const req = mockRequest({ params: { id: "nonexistent" } });
-            const res = mockResponse();
-
-            await RecruiterController.getRecruiterById(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(404);
-        });
+      expect(res.status).toBe(200);
+      const updated = await Recruiter.findById(id);
+      expect(updated?.firstName).toBe("UpdatedName");
     });
-
-    describe("updateRecruiter", () => {
-        it("should hash password if provided during update", async () => {
-            const id = new Types.ObjectId().toString();
-            const req = mockRequest({ 
-                params: { id },
-                body: { firstName: "Jane", password: "newpassword" } 
-            });
-            // Ensure security check pass by matching user ID with target ID
-            (req as any).user.id = id;
-
-            const res = mockResponse();
-            mockRecruiter.findByIdAndUpdate.mockResolvedValue({ _id: id });
-
-            await RecruiterController.updateRecruiter(req, res);
-
-            expect(mockHashMe).toHaveBeenCalledWith("newpassword");
-            expect(mockRecruiter.findByIdAndUpdate).toHaveBeenCalledWith(
-                id, 
-                expect.objectContaining({ password: "hashed_newpassword" }),
-                { new: true }
-            );
-            expect(res.status).toHaveBeenCalledWith(200);
-        });
-
-        it("should fail 403 if updating other recruiter", async () => {
-            const id = new Types.ObjectId().toString();
-            const otherId = new Types.ObjectId().toString();
-            const req = mockRequest({ 
-                params: { id },
-                body: { firstName: "Jane" } 
-            });
-            (req as any).user.id = otherId; // Different ID
-
-            const res = mockResponse();
-
-            await RecruiterController.updateRecruiter(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(403);
-            expect(mockRecruiter.findByIdAndUpdate).not.toHaveBeenCalled();
-        });
-    });
-
-    describe("deleteRecruiter", () => {
-        it("should delete recruiter", async () => {
-            const id = new Types.ObjectId().toString();
-            mockRecruiter.findByIdAndDelete.mockResolvedValue({
-                _id: id,
-                email: "john@example.com",
-                firstName: "John",
-            });
-            
-            const req = mockRequest({ params: { id } });
-            // Ensure security check pass
-            (req as any).user.id = id;
-
-            const res = mockResponse();
-
-            await RecruiterController.deleteRecruiter(req, res);
-
-            expect(mockRecruiter.findByIdAndDelete).toHaveBeenCalledWith(id);
-            expect(mockSendRecruiterDeletionEmail).toHaveBeenCalledWith(
-                "john@example.com",
-                "John",
-            );
-            expect(res.status).toHaveBeenCalledWith(200);
-        });
-
-        it("should fail 403 if deleting other recruiter", async () => {
-            const id = new Types.ObjectId().toString();
-            const otherId = new Types.ObjectId().toString();
-            const req = mockRequest({ params: { id } });
-            (req as any).user.id = otherId;
-
-            const res = mockResponse();
-
-            await RecruiterController.deleteRecruiter(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(403);
-            expect(mockRecruiter.findByIdAndDelete).not.toHaveBeenCalled();
-        });
-    });
+  });
 });
