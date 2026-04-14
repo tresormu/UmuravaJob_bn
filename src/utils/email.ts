@@ -9,7 +9,7 @@ const transporter = nodemailer.createTransport({
     user: config.email.smtpUser,
     pass: config.email.smtpPass,
   },
-});
+} as any);
 
 type EmailContent = {
   title: string;
@@ -67,6 +67,9 @@ export const sendEmail = async (params: {
   html: string;
   text?: string;
 }) => {
+  if (process.env.NODE_ENV === "test") {
+    return Promise.resolve({ skipped: true });
+  }
   const options: {
     from: string;
     to: string | string[];

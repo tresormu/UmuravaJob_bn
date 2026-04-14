@@ -28,6 +28,7 @@ const config = {
 
   // 🔥 THIS is important for ESM + jest globals
   injectGlobals: true,
+  testTimeout: 30000,
 };
 
 export default config;

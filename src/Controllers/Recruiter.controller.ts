@@ -11,14 +11,13 @@ import {
     VerifyRefreshToken,
 } from "../utils/token.js";
 
-class RecruiterController {
-    private generateVerificationCode() {
-        return String(crypto.randomInt(100000, 1000000));
-    }
+const generateVerificationCode = (): string =>
+    String(crypto.randomInt(100000, 1000000));
 
-    private hashToken(value: string) {
-        return crypto.createHash("sha256").update(value).digest("hex");
-    }
+const hashToken = (value: string): string =>
+    crypto.createHash("sha256").update(value).digest("hex");
+
+class RecruiterController {
 
     /**
      * Create a new recruiter
@@ -49,8 +48,8 @@ class RecruiterController {
             
             // Hash the password before saving
             const hashedPassword = await HashMe(password);
-            const verificationCode = this.generateVerificationCode();
-            const verificationHash = this.hashToken(verificationCode);
+            const verificationCode = generateVerificationCode();
+            const verificationHash = hashToken(verificationCode);
             const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
             
             const recruiter = await Recruiter.create({
@@ -63,12 +62,19 @@ class RecruiterController {
                 companyWebsite,
                 position,
                 bio,
+                role: "recruiter",
                 isEmailVerified: false,
                 emailVerificationToken: verificationHash,
                 emailVerificationExpires: expiresAt,
+                isActive: true,
             });
 
-            await sendVerificationEmail(email, verificationCode);
+            try {
+                await sendVerificationEmail(email, verificationCode);
+            } catch (emailError) {
+                console.error("Failed to send verification email:", emailError);
+                // We don't fail the request because the recruiter was already created
+            }
             
             return res.status(201).json({ 
                 success: true, 
@@ -76,10 +82,16 @@ class RecruiterController {
                 recruiter 
             });
         } catch (error) {
-            return res.status(500).json({ 
-                success: false, 
-                message: "Failed to create recruiter", 
-                error: error instanceof Error ? error.message : error 
+            if (error && typeof error === "object") {
+                // Log richer error details during development/testing
+                console.error("Recruiter create error:", error);
+            }
+            const message =
+                error instanceof Error ? error.message : "Failed to create recruiter";
+            return res.status(500).json({
+                success: false,
+                message: "Failed to create recruiter",
+                error: process.env.NODE_ENV === "test" ? message : undefined,
             });
         }
     }
@@ -397,7 +409,7 @@ class RecruiterController {
                     message: "Verification code expired",
                 });
             }
-            const codeHash = this.hashToken(code);
+            const codeHash = hashToken(code);
             if (codeHash !== recruiter.emailVerificationToken) {
                 return res.status(400).json({
                     success: false,
@@ -449,8 +461,8 @@ class RecruiterController {
                 });
             }
 
-            const verificationCode = this.generateVerificationCode();
-            recruiter.emailVerificationToken = this.hashToken(verificationCode);
+            const verificationCode = generateVerificationCode();
+            recruiter.emailVerificationToken = hashToken(verificationCode);
             recruiter.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000);
             await recruiter.save();
 
