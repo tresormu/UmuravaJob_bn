@@ -159,7 +159,7 @@
  * @openapi
  * /api/applicants/applicant-screening/pdf:
  *   post:
- *     summary: Applicant Screening - parse resume PDF and extract structured profile with Gemini AI
+ *     summary: Parse resume PDF, extract applicant profile with Gemini AI, and save to database
  *     tags: [Applicants]
  *     requestBody:
  *       required: true
@@ -174,7 +174,7 @@
  *                 format: binary
  *     responses:
  *       200:
- *         description: Applicant screening completed and profile extracted
+ *         description: Applicant profile extracted and saved in applicants collection
  *         content:
  *           application/json:
  *             schema:
@@ -186,6 +186,8 @@
  *                   type: object
  *                   properties:
  *                     fileName:
+ *                       type: string
+ *                     applicantId:
  *                       type: string
  *                     pages:
  *                       type: number
@@ -318,8 +320,11 @@
  *                               enum: [Full-time, Part-time, Contract]
  *                             startDate:
  *                               type: string
+ *                     savedApplicant:
+ *                       type: object
+ *                       description: Persisted document in applicants collection including applicantProfile object as extracted
  *       400:
- *         description: Missing file or invalid file type
+ *         description: Missing required fields or invalid file/id values
  *       422:
  *         description: PDF contains no readable text
  *       500:

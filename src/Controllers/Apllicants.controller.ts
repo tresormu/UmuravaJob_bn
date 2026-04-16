@@ -1,6 +1,8 @@
 import type { Request, Response } from "express";
 import axios from "axios";
+import { Types } from "mongoose";
 import { PDFParse } from "pdf-parse";
+import Applicant from "../Models/Applicant.model.js";
 
 type SkillLevel = "Beginner" | "Intermediate" | "Advanced" | "Expert";
 type LanguageProficiency = "Basic" | "Conversational" | "Fluent" | "Native";
@@ -273,6 +275,19 @@ const extractApplicantProfileWithGemini = async (
 	);
 };
 
+const normalizeOptionalString = (value: unknown): string | undefined => {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const buildApplicantFullName = (profile: ApplicantScreeningProfile): string => {
+	const first = normalizeOptionalString(profile.personaInfo.firstName) ?? "";
+	const last = normalizeOptionalString(profile.personaInfo.lastName) ?? "";
+	const fullName = `${first} ${last}`.trim();
+	return fullName || "Unknown Applicant";
+};
+
 class ApplicantScreeningController {
 	static async getApplicantScreeningSchema(
 		_req: Request,
@@ -298,6 +313,9 @@ class ApplicantScreeningController {
 				return;
 			}
 
+			const jobId = new Types.ObjectId();
+			const recruiterId = new Types.ObjectId();
+
 			const parser = new PDFParse({ data: requestWithFile.file.buffer });
 			const parsed = await parser.getText();
 			await parser.destroy();
@@ -309,17 +327,40 @@ class ApplicantScreeningController {
 				return;
 			}
 
-      const applicantProfile = await extractApplicantProfileWithGemini(
-        extractedText,
-      );
+			const applicantProfile = await extractApplicantProfileWithGemini(extractedText);
+
+			const applicantDoc = await new Applicant({
+				jobId,
+				recruiterId,
+				fullName: buildApplicantFullName(applicantProfile),
+				email: normalizeOptionalString(applicantProfile.personaInfo.email),
+				location: normalizeOptionalString(applicantProfile.personaInfo.location),
+				resumeFileName: requestWithFile.file.originalname,
+				resumeText: extractedText,
+				applicantProfile: applicantProfile as unknown as Record<string, unknown>,
+				linkedInUrl: normalizeOptionalString(applicantProfile.socialLinks.linkedin),
+				portfolioUrl: normalizeOptionalString(applicantProfile.socialLinks.portfolio),
+				status: "applied",
+				source: "pdf",
+				isParsed: true,
+				parsedAt: new Date(),
+				recruiterNotes: normalizeOptionalString(applicantProfile.personaInfo.headline),
+				tags: [
+					...applicantProfile.languages.map((language) => language.name),
+					applicantProfile.availability.status,
+					applicantProfile.availability.type,
+				].filter(Boolean),
+			}).save();
 
 			res.status(200).json({
-				message: "Applicant screening completed",
+				message: "Applicant data extracted and saved",
 				screening: {
+					applicantId: applicantDoc._id,
 					fileName: requestWithFile.file.originalname,
 					pages: parsed.pages?.length ?? 0,
 					extractedText,
 					applicantProfile,
+					savedApplicant: applicantDoc,
 				},
 			});
 		} catch (error) {

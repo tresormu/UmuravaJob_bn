@@ -39,6 +39,7 @@ export interface ApplicantAttrs {
   resumeUrl?: string;
   resumeFileName?: string;
   resumeText?: string;
+  applicantProfile?: Record<string, unknown>;
   linkedInUrl?: string;
   portfolioUrl?: string;
   structuredProfile?: StructuredProfile;
@@ -102,6 +103,7 @@ const ApplicantSchema = new Schema<ApplicantAttrs>(
     resumeUrl: { type: String, trim: true },
     resumeFileName: { type: String, trim: true },
     resumeText: { type: String },
+    applicantProfile: { type: Schema.Types.Mixed, default: undefined },
     linkedInUrl: { type: String, trim: true },
     portfolioUrl: { type: String, trim: true },
     structuredProfile: { type: StructuredProfileSchema, default: undefined },
