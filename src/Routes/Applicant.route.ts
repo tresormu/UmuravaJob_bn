@@ -21,6 +21,10 @@ const upload = multer({
 App.get("/", protect, authorizeRoles("recruiter"), ApplicantsController.GetApplicants);
 App.get("/:id", protect, authorizeRoles("recruiter"), ApplicantsController.GetApplicantById);
 App.post("/", protect, authorizeRoles("recruiter"), ApplicantsController.CreateApplicant);
+App.get(
+	"/applicant-screening/schema",
+	ApplicantScreeningController.getApplicantScreeningSchema,
+);
 App.post(
 	"/applicant-screening/pdf",
 	upload.single("file"),
