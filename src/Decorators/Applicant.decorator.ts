@@ -143,3 +143,31 @@
  *       404:
  *         description: Applicant not found
  */
+
+/**
+ * @openapi
+ * /api/applicants/applicant-screening/pdf:
+ *   post:
+ *     summary: Applicant Screening - parse resume PDF to text
+ *     tags: [Applicants]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Applicant screening completed and text extracted
+ *       400:
+ *         description: Missing file or invalid file type
+ *       422:
+ *         description: PDF contains no readable text
+ *       500:
+ *         description: Failed to parse the PDF
+ */
