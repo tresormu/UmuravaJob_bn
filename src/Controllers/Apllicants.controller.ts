@@ -335,7 +335,6 @@ class ApplicantScreeningController {
 				fullName: buildApplicantFullName(applicantProfile),
 				email: normalizeOptionalString(applicantProfile.personaInfo.email),
 				location: normalizeOptionalString(applicantProfile.personaInfo.location),
-				resumeFileName: requestWithFile.file.originalname,
 				resumeText: extractedText,
 				applicantProfile: applicantProfile as unknown as Record<string, unknown>,
 				linkedInUrl: normalizeOptionalString(applicantProfile.socialLinks.linkedin),
@@ -344,7 +343,6 @@ class ApplicantScreeningController {
 				source: "pdf",
 				isParsed: true,
 				parsedAt: new Date(),
-				recruiterNotes: normalizeOptionalString(applicantProfile.personaInfo.headline),
 				tags: [
 					...applicantProfile.languages.map((language) => language.name),
 					applicantProfile.availability.status,
@@ -352,15 +350,28 @@ class ApplicantScreeningController {
 				].filter(Boolean),
 			}).save();
 
+			await Applicant.updateOne(
+				{ _id: applicantDoc._id },
+				{
+					$unset: {
+						jobId: 1,
+						recruiterId: 1,
+						resumeFileName: 1,
+						recruiterNotes: 1,
+					},
+				},
+			);
+
+			const savedApplicant = await Applicant.findById(applicantDoc._id).lean();
+
 			res.status(200).json({
 				message: "Applicant data extracted and saved",
 				screening: {
 					applicantId: applicantDoc._id,
-					fileName: requestWithFile.file.originalname,
 					pages: parsed.pages?.length ?? 0,
 					extractedText,
 					applicantProfile,
-					savedApplicant: applicantDoc,
+					savedApplicant,
 				},
 			});
 		} catch (error) {
