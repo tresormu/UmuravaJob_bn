@@ -161,6 +161,13 @@
  *   post:
  *     summary: Parse resume PDF, extract applicant profile with Gemini AI, and save to database
  *     tags: [Applicants]
+ *     parameters:
+ *       - in: query
+ *         name: jobId
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional Job ID to associate applicants with a specific job
  *     requestBody:
  *       required: true
  *       content:

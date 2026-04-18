@@ -291,6 +291,7 @@ const buildApplicantFullName = (profile: ApplicantScreeningProfile): string => {
 class ApplicantScreeningController {
 	private static async processSingleCv(
 		file: Express.Multer.File,
+		jobId?: string | Types.ObjectId,
 	): Promise<{
 		applicantId: Types.ObjectId;
 		fileName: string;
@@ -299,7 +300,7 @@ class ApplicantScreeningController {
 		applicantProfile: ApplicantScreeningProfile;
 		savedApplicant: unknown;
 	}> {
-		const jobId = new Types.ObjectId();
+		const finalJobId = jobId ? new Types.ObjectId(jobId) : new Types.ObjectId();
 		const recruiterId = new Types.ObjectId();
 
 		const parser = new PDFParse({ data: file.buffer });
@@ -314,7 +315,7 @@ class ApplicantScreeningController {
 		const applicantProfile = await extractApplicantProfileWithGemini(extractedText);
 
 		const applicantDoc = await new Applicant({
-			jobId,
+			jobId: finalJobId,
 			recruiterId,
 			fullName: buildApplicantFullName(applicantProfile),
 			email: normalizeOptionalString(applicantProfile.personaInfo.email),
@@ -338,7 +339,7 @@ class ApplicantScreeningController {
 			{ _id: applicantDoc._id },
 			{
 				$unset: {
-					jobId: 1,
+
 					recruiterId: 1,
 					resumeFileName: 1,
 					recruiterNotes: 1,
@@ -373,6 +374,8 @@ class ApplicantScreeningController {
 		res: Response,
 	): Promise<void> {
 		try {
+			const jobId = (req.query.jobId as string) || undefined;
+
 			const requestWithFiles = req as Request & {
 				files?: Express.Multer.File[] | undefined;
 			};
@@ -395,7 +398,7 @@ class ApplicantScreeningController {
 
 			for (const file of files) {
 				try {
-					const result = await ApplicantScreeningController.processSingleCv(file);
+					const result = await ApplicantScreeningController.processSingleCv(file, jobId);
 					processed.push(result);
 				} catch (error) {
 					failed.push({
