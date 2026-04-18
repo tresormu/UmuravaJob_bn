@@ -27,7 +27,7 @@ App.get(
 );
 App.post(
 	"/applicant-screening/pdf",
-	upload.single("file"),
+	upload.array("files", 20),
 	ApplicantScreeningController.parseApplicantScreeningPdf,
 );
 App.patch("/:id", protect, authorizeRoles("recruiter"), ApplicantsController.UpdateApplicant);
