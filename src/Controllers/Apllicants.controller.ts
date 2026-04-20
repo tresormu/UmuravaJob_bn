@@ -289,6 +289,76 @@ const buildApplicantFullName = (profile: ApplicantScreeningProfile): string => {
 };
 
 class ApplicantScreeningController {
+	private static async processSingleCv(
+		file: Express.Multer.File,
+		jobId?: string | Types.ObjectId,
+	): Promise<{
+		applicantId: Types.ObjectId;
+		fileName: string;
+		pages: number;
+		extractedText: string;
+		applicantProfile: ApplicantScreeningProfile;
+		savedApplicant: unknown;
+	}> {
+		const finalJobId = jobId ? new Types.ObjectId(jobId) : new Types.ObjectId();
+		const recruiterId = new Types.ObjectId();
+
+		const parser = new PDFParse({ data: file.buffer });
+		const parsed = await parser.getText();
+		await parser.destroy();
+
+		const extractedText = parsed.text?.trim() ?? "";
+		if (!extractedText) {
+			throw new Error("No readable text found in PDF");
+		}
+
+		const applicantProfile = await extractApplicantProfileWithGemini(extractedText);
+
+		const applicantDoc = await new Applicant({
+			jobId: finalJobId,
+			recruiterId,
+			fullName: buildApplicantFullName(applicantProfile),
+			email: normalizeOptionalString(applicantProfile.personaInfo.email),
+			location: normalizeOptionalString(applicantProfile.personaInfo.location),
+			resumeText: extractedText,
+			applicantProfile: applicantProfile as unknown as Record<string, unknown>,
+			linkedInUrl: normalizeOptionalString(applicantProfile.socialLinks.linkedin),
+			portfolioUrl: normalizeOptionalString(applicantProfile.socialLinks.portfolio),
+			status: "applied",
+			source: "pdf",
+			isParsed: true,
+			parsedAt: new Date(),
+			tags: [
+				...applicantProfile.languages.map((language) => language.name),
+				applicantProfile.availability.status,
+				applicantProfile.availability.type,
+			].filter(Boolean),
+		}).save();
+
+		await Applicant.updateOne(
+			{ _id: applicantDoc._id },
+			{
+				$unset: {
+
+					recruiterId: 1,
+					resumeFileName: 1,
+					recruiterNotes: 1,
+				},
+			},
+		);
+
+		const savedApplicant = await Applicant.findById(applicantDoc._id).lean();
+
+		return {
+			applicantId: applicantDoc._id,
+			fileName: file.originalname,
+			pages: parsed.pages?.length ?? 0,
+			extractedText,
+			applicantProfile,
+			savedApplicant,
+		};
+	}
+
 	static async getApplicantScreeningSchema(
 		_req: Request,
 		res: Response,
@@ -304,75 +374,55 @@ class ApplicantScreeningController {
 		res: Response,
 	): Promise<void> {
 		try {
-			const requestWithFile = req as Request & {
-				file?: Express.Multer.File | undefined;
+			const jobId = (req.query.jobId as string) || undefined;
+
+			const requestWithFiles = req as Request & {
+				files?: Express.Multer.File[] | undefined;
 			};
+			const files = requestWithFiles.files ?? [];
 
-			if (!requestWithFile.file) {
-				res.status(400).json({ message: "PDF file is required" });
+			if (files.length === 0) {
+				res.status(400).json({ message: "At least one PDF file is required" });
 				return;
 			}
 
-			const jobId = new Types.ObjectId();
-			const recruiterId = new Types.ObjectId();
+			const processed: Array<{
+				applicantId: Types.ObjectId;
+				fileName: string;
+				pages: number;
+				extractedText: string;
+				applicantProfile: ApplicantScreeningProfile;
+				savedApplicant: unknown;
+			}> = [];
+			const failed: Array<{ fileName: string; error: string }> = [];
 
-			const parser = new PDFParse({ data: requestWithFile.file.buffer });
-			const parsed = await parser.getText();
-			await parser.destroy();
-
-			const extractedText = parsed.text?.trim() ?? "";
-
-			if (!extractedText) {
-				res.status(422).json({ message: "No readable text found in PDF" });
-				return;
+			for (const file of files) {
+				try {
+					const result = await ApplicantScreeningController.processSingleCv(file, jobId);
+					processed.push(result);
+				} catch (error) {
+					failed.push({
+						fileName: file.originalname,
+						error: error instanceof Error ? error.message : "Unknown error",
+					});
+				}
 			}
 
-			const applicantProfile = await extractApplicantProfileWithGemini(extractedText);
-
-			const applicantDoc = await new Applicant({
-				jobId,
-				recruiterId,
-				fullName: buildApplicantFullName(applicantProfile),
-				email: normalizeOptionalString(applicantProfile.personaInfo.email),
-				location: normalizeOptionalString(applicantProfile.personaInfo.location),
-				resumeText: extractedText,
-				applicantProfile: applicantProfile as unknown as Record<string, unknown>,
-				linkedInUrl: normalizeOptionalString(applicantProfile.socialLinks.linkedin),
-				portfolioUrl: normalizeOptionalString(applicantProfile.socialLinks.portfolio),
-				status: "applied",
-				source: "pdf",
-				isParsed: true,
-				parsedAt: new Date(),
-				tags: [
-					...applicantProfile.languages.map((language) => language.name),
-					applicantProfile.availability.status,
-					applicantProfile.availability.type,
-				].filter(Boolean),
-			}).save();
-
-			await Applicant.updateOne(
-				{ _id: applicantDoc._id },
-				{
-					$unset: {
-						jobId: 1,
-						recruiterId: 1,
-						resumeFileName: 1,
-						recruiterNotes: 1,
-					},
-				},
-			);
-
-			const savedApplicant = await Applicant.findById(applicantDoc._id).lean();
+			if (processed.length === 0) {
+				res.status(422).json({
+					message: "No CV could be processed",
+					failed,
+				});
+				return;
+			}
 
 			res.status(200).json({
 				message: "Applicant data extracted and saved",
-				screening: {
-					applicantId: applicantDoc._id,
-					pages: parsed.pages?.length ?? 0,
-					extractedText,
-					applicantProfile,
-					savedApplicant,
-				},
+				totalUploaded: files.length,
+				totalSaved: processed.length,
+				totalFailed: failed.length,
+				results: processed,
+				failed,
 			});
 		} catch (error) {
 			res.status(500).json({

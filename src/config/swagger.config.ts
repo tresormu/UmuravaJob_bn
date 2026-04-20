@@ -38,7 +38,7 @@ const options: swaggerJsdoc.Options = {
       },
     ],
   },
-  apis: ["./src/Decorators/*.ts", "./dist/Decorators/*.js"],
+  apis: ["./src/Decorators/*.ts"],
 };
 
 const swaggerSpec = swaggerJsdoc(options);

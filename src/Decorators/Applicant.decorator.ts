@@ -161,17 +161,27 @@
  *   post:
  *     summary: Parse resume PDF, extract applicant profile with Gemini AI, and save to database
  *     tags: [Applicants]
+ *     parameters:
+ *       - in: query
+ *         name: jobId
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional Job ID to associate applicants with a specific job
  *     requestBody:
  *       required: true
  *       content:
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [file]
+ *             required: [files]
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Upload one or multiple CV PDFs (max 20)
  *     responses:
  *       200:
  *         description: Applicant profile extracted and saved in applicants collection
@@ -182,151 +192,220 @@
  *               properties:
  *                 message:
  *                   type: string
- *                 screening:
- *                   type: object
- *                   properties:
- *                     fileName:
- *                       type: string
- *                     applicantId:
- *                       type: string
- *                     pages:
- *                       type: number
- *                     extractedText:
- *                       type: string
- *                     applicantProfile:
- *                       type: object
- *                       properties:
- *                         personaInfo:
- *                           type: object
- *                           properties:
- *                             firstName:
- *                               type: string
- *                             lastName:
- *                               type: string
- *                             email:
- *                               type: string
- *                               format: email
- *                             headline:
- *                               type: string
- *                             location:
- *                               type: string
- *                         skills:
- *                           type: array
- *                           items:
+ *                 totalUploaded:
+ *                   type: number
+ *                 totalSaved:
+ *                   type: number
+ *                 totalFailed:
+ *                   type: number
+ *                 results:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       fileName:
+ *                         type: string
+ *                       applicantId:
+ *                         type: string
+ *                       pages:
+ *                         type: number
+ *                       extractedText:
+ *                         type: string
+ *                       applicantProfile:
+ *                         type: object
+ *                         properties:
+ *                           personaInfo:
  *                             type: object
  *                             properties:
- *                               name:
+ *                               firstName:
  *                                 type: string
- *                               level:
+ *                               lastName:
  *                                 type: string
- *                                 enum: [Beginner, Intermediate, Advanced, Expert]
- *                               yearsOfExperience:
- *                                 type: number
- *                         languages:
- *                           type: array
- *                           items:
+ *                               email:
+ *                                 type: string
+ *                                 format: email
+ *                               headline:
+ *                                 type: string
+ *                               location:
+ *                                 type: string
+ *                           skills:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 name:
+ *                                   type: string
+ *                                 level:
+ *                                   type: string
+ *                                   enum: [Beginner, Intermediate, Advanced, Expert]
+ *                                 yearsOfExperience:
+ *                                   type: number
+ *                           languages:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 name:
+ *                                   type: string
+ *                                 proficiency:
+ *                                   type: string
+ *                                   enum: [Basic, Conversational, Fluent, Native]
+ *                           workExperience:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 company:
+ *                                   type: string
+ *                                 role:
+ *                                   type: string
+ *                                 startDate:
+ *                                   type: string
+ *                                 endDate:
+ *                                   type: string
+ *                                 description:
+ *                                   type: string
+ *                                 technologies:
+ *                                   type: array
+ *                                   items:
+ *                                     type: string
+ *                                 isCurrent:
+ *                                   type: boolean
+ *                           education:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 institution:
+ *                                   type: string
+ *                                 degree:
+ *                                   type: string
+ *                                 fieldOfStudy:
+ *                                   type: string
+ *                                 startYear:
+ *                                   type: number
+ *                                 endYear:
+ *                                   type: number
+ *                           certifications:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 name:
+ *                                   type: string
+ *                                 issuer:
+ *                                   type: string
+ *                                 issueDate:
+ *                                   type: string
+ *                           projects:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 name:
+ *                                   type: string
+ *                                 description:
+ *                                   type: string
+ *                                 technologies:
+ *                                   type: array
+ *                                   items:
+ *                                     type: string
+ *                                 role:
+ *                                   type: string
+ *                                 link:
+ *                                   type: string
+ *                                 startDate:
+ *                                   type: string
+ *                                 endDate:
+ *                                   type: string
+ *                           socialLinks:
  *                             type: object
  *                             properties:
- *                               name:
+ *                               linkedin:
  *                                 type: string
- *                               proficiency:
+ *                               github:
  *                                 type: string
- *                                 enum: [Basic, Conversational, Fluent, Native]
- *                         workExperience:
- *                           type: array
- *                           items:
+ *                               portfolio:
+ *                                 type: string
+ *                           availability:
  *                             type: object
  *                             properties:
- *                               company:
+ *                               status:
  *                                 type: string
- *                               role:
+ *                                 enum: [Available, Open to Opportunities, Not Available]
+ *                               type:
  *                                 type: string
+ *                                 enum: [Full-time, Part-time, Contract]
  *                               startDate:
  *                                 type: string
- *                               endDate:
- *                                 type: string
- *                               description:
- *                                 type: string
- *                               technologies:
- *                                 type: array
- *                                 items:
- *                                   type: string
- *                               isCurrent:
- *                                 type: boolean
- *                         education:
- *                           type: array
- *                           items:
- *                             type: object
- *                             properties:
- *                               institution:
- *                                 type: string
- *                               degree:
- *                                 type: string
- *                               fieldOfStudy:
- *                                 type: string
- *                               startYear:
- *                                 type: number
- *                               endYear:
- *                                 type: number
- *                         certifications:
- *                           type: array
- *                           items:
- *                             type: object
- *                             properties:
- *                               name:
- *                                 type: string
- *                               issuer:
- *                                 type: string
- *                               issueDate:
- *                                 type: string
- *                         projects:
- *                           type: array
- *                           items:
- *                             type: object
- *                             properties:
- *                               name:
- *                                 type: string
- *                               description:
- *                                 type: string
- *                               technologies:
- *                                 type: array
- *                                 items:
- *                                   type: string
- *                               role:
- *                                 type: string
- *                               link:
- *                                 type: string
- *                               startDate:
- *                                 type: string
- *                               endDate:
- *                                 type: string
- *                         socialLinks:
- *                           type: object
- *                           properties:
- *                             linkedin:
- *                               type: string
- *                             github:
- *                               type: string
- *                             portfolio:
- *                               type: string
- *                         availability:
- *                           type: object
- *                           properties:
- *                             status:
- *                               type: string
- *                               enum: [Available, Open to Opportunities, Not Available]
- *                             type:
- *                               type: string
- *                               enum: [Full-time, Part-time, Contract]
- *                             startDate:
- *                               type: string
- *                     savedApplicant:
- *                       type: object
- *                       description: Persisted document in applicants collection including applicantProfile object as extracted
+ *                       savedApplicant:
+ *                         type: object
+ *                         description: Persisted document in applicants collection including applicantProfile object as extracted
+ *                 failed:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       fileName:
+ *                         type: string
+ *                       error:
+ *                         type: string
  *       400:
- *         description: Missing required fields or invalid file/id values
+ *         description: Missing required files
  *       422:
  *         description: PDF contains no readable text
  *       500:
  *         description: Failed to parse the PDF
+ */
+
+/**
+ * @openapi
+ * /api/applicants/applicant-screening/rank:
+ *   get:
+ *     summary: Rank applicants for a specific job using AI and return top 10
+ *     tags: [Applicants]
+ *     parameters:
+ *       - in: query
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Job ID used to select and rank its applicants
+ *     responses:
+ *       200:
+ *         description: Applicants ranked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 jobId:
+ *                   type: string
+ *                 totalApplicants:
+ *                   type: number
+ *                 ranked_candidates:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       rank:
+ *                         type: number
+ *                       candidate_name:
+ *                         type: string
+ *                       score:
+ *                         type: number
+ *                       summary:
+ *                         type: string
+ *       400:
+ *         description: Missing or invalid jobId
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Job or applicants not found
+ *       500:
+ *         description: Failed to rank applicants
  */
