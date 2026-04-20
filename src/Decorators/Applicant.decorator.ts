@@ -357,3 +357,55 @@
  *       500:
  *         description: Failed to parse the PDF
  */
+
+/**
+ * @openapi
+ * /api/applicants/applicant-screening/rank:
+ *   get:
+ *     summary: Rank applicants for a specific job using AI and return top 10
+ *     tags: [Applicants]
+ *     parameters:
+ *       - in: query
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Job ID used to select and rank its applicants
+ *     responses:
+ *       200:
+ *         description: Applicants ranked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 jobId:
+ *                   type: string
+ *                 totalApplicants:
+ *                   type: number
+ *                 ranked_candidates:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       rank:
+ *                         type: number
+ *                       candidate_name:
+ *                         type: string
+ *                       score:
+ *                         type: number
+ *                       summary:
+ *                         type: string
+ *       400:
+ *         description: Missing or invalid jobId
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Job or applicants not found
+ *       500:
+ *         description: Failed to rank applicants
+ */

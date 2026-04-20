@@ -4,6 +4,7 @@ import multer from "multer";
 import { protect } from "../Middlewares/Auth.Middleware.js";
 import { authorizeRoles } from "../Middlewares/authorize.js";
 import ApplicantScreeningController from "../Controllers/Apllicants.controller.js";
+import ApplicantRankingController from "../Controllers/ApplicantRanking.controller.js";
 
 const App = Router();
 const upload = multer({
@@ -29,6 +30,10 @@ App.post(
 	"/applicant-screening/pdf",
 	upload.array("files", 20),
 	ApplicantScreeningController.parseApplicantScreeningPdf,
+);
+App.get(
+	"/applicant-screening/rank",
+	ApplicantRankingController.rankApplicantsForJob,
 );
 App.patch("/:id", protect, authorizeRoles("recruiter"), ApplicantsController.UpdateApplicant);
 App.delete("/:id", protect, authorizeRoles("recruiter"), ApplicantsController.DeleteApplicant);
