@@ -11,6 +11,8 @@ export const protect = (req: AuthRequest, res: Response, next: NextFunction) => 
     return res.status(401).json({ error: ResponseMessages.ERROR.UNAUTHORIZED });
   }
 
+  const token = authHeader.split(" ")[1];
+
   try {
     if (!config.jwtSecret) {
       return res.status(500).json({ error: ResponseMessages.ERROR.INTERNAL_SERVER_ERROR });
