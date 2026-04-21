@@ -10,6 +10,8 @@ import Answer from "../Models/Answer.model.js";
 import Question from "../Models/Question.model.js";
 import FileUpload from "../Models/FileUpload.model.js";
 import xlsx from "xlsx";
+import NotificationController from "./Notification.controller.js";
+import { NotificationType } from "../Models/Notification.model.js";
 import {
   sendApplicationReceivedEmail,
   sendShortlistedEmail,
@@ -304,6 +306,23 @@ class ApplicationPipelineController {
         } catch (emailError) {
           console.error("Failed to send application received email", emailError);
         }
+      }
+
+      // Add Notification for Recruiter
+      try {
+        await NotificationController.createNotification({
+          recipientId: job.recruiterId,
+          recipientType: "Recruiter",
+          title: "New Job Application",
+          message: `${fullName} has applied for the "${job.title}" position.`,
+          type: NotificationType.NEW_APPLICANT,
+          data: {
+            jobId: job._id,
+            applicationId,
+          },
+        });
+      } catch (notifError) {
+        console.error("Failed to create application notification", notifError);
       }
 
       return res.status(201).json({ applicationId });
@@ -669,6 +688,44 @@ class ApplicationPipelineController {
         errorCount: errors.length,
         errors: errors.length > 0 ? errors.slice(0, 200) : undefined,
       });
+
+      // Add Notification for Recruiter
+      try {
+        await NotificationController.createNotification({
+          recipientId: req.user.id,
+          recipientType: "Recruiter",
+          title: "Excel Import Complete",
+          message: `Your import of ${rows.length} applicants for "${job.title}" has been processed. ${createdCount} successfully created, ${errors.length} failed.`,
+          type: NotificationType.EXCEL_IMPORT_COMPLETE,
+          data: {
+            jobId: job._id,
+            importId: fileUpload._id,
+            totalRows: rows.length,
+            successCount: createdCount,
+            errorCount: errors.length,
+          },
+        });
+      } catch (notifError) {
+        console.error("Failed to create import notification", notifError);
+      }
+
+      // TODO: Initiate AI Review process here
+      // For now, we simulate a notification that suggestions are being prepared
+      try {
+        await NotificationController.createNotification({
+          recipientId: req.user.id,
+          recipientType: "Recruiter",
+          title: "AI Review Initiated",
+          message: `AI has started reviewing the applicants from your recent import for "${job.title}". You will be notified when the top suggestions are ready.`,
+          type: NotificationType.AI_SUGGESTION,
+          data: {
+            jobId: job._id,
+            importId: fileUpload._id,
+          },
+        });
+      } catch (aiNotifError) {
+        console.error("Failed to create AI suggestion placeholder notification", aiNotifError);
+      }
 
       return res.status(200).json({
         message: "Upload processed",

@@ -7,6 +7,8 @@ import mongoose from "mongoose";
 import { Types } from "mongoose";
 import type { AuthRequest } from "../types/type.js";
 import { sendShortlistedEmail } from "../utils/email.js";
+import NotificationController from "./Notification.controller.js";
+import { NotificationType } from "../Models/Notification.model.js";
 
 class ApplicantsController {
   private static addIfDefined(
@@ -229,6 +231,23 @@ class ApplicantsController {
             throw new Error("APPLICANT_CREATE_FAILED");
           }
           applicant = createdApplicant;
+
+          // Add Notification for Recruiter
+          try {
+            await NotificationController.createNotification({
+              recipientId: userId,
+              recipientType: "Recruiter",
+              title: "Applicant Manually Added",
+              message: `You have successfully added ${fullName} to the "${job.title}" position.`,
+              type: NotificationType.NEW_APPLICANT,
+              data: {
+                jobId: job._id,
+                applicantId: applicant._id,
+              },
+            });
+          } catch (notifError) {
+            console.error("Failed to create manual applicant notification", notifError);
+          }
         }
       } finally {
         // session.endSession();

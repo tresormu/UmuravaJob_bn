@@ -23,7 +23,7 @@ class JobController {
         });
       }
 
-      const { title, description, skills, experience, education, location } =
+      const { title, description, skills, experience, education, location, deadline } =
         req.body;
       if (!title || typeof title !== "string") {
         return res.status(400).json({ success: false, message: "title is required" });
@@ -36,7 +36,7 @@ class JobController {
         return res.status(400).json({ success: false, message: "experience is invalid" });
       }
 
-      const job = await Job.create({
+      const jobData: any = {
         title,
         description,
         skills,
@@ -44,7 +44,10 @@ class JobController {
         education,
         location,
         recruiterId: req.user.id,
-      });
+      };
+      if (deadline) jobData.deadline = new Date(deadline);
+
+      const job = (await Job.create(jobData)) as any;
 
       if (req.user.email) {
         try {
@@ -189,6 +192,9 @@ class JobController {
           return res.status(400).json({ success: false, message: "Invalid experience" });
         }
         updateData.experience = expNum;
+      }
+      if (updateData.deadline !== undefined) {
+        updateData.deadline = new Date(updateData.deadline);
       }
 
       const updatedJob = await Job.findByIdAndUpdate(id, updateData, {

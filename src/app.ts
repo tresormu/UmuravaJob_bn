@@ -12,6 +12,7 @@ import errorMiddleware from "./Middlewares/error.middleware.js";
 import Jobrouter from "./Routes/Job.routes.js";
 import ApplicationRoutes from "./Routes/Application.route.js";
 import QuestionRoutes from "./Routes/Question.route.js";
+import NotificationRoutes from "./Routes/Notification.route.js";
 
 const app = express();
 
@@ -46,6 +47,7 @@ app.use("/api/recruiters", authLimiter, RecruitersRoutes);
 app.use("/api/jobs", authLimiter, Jobrouter);
 app.use("/api", authLimiter, QuestionRoutes);
 app.use("/api", authLimiter, ApplicationRoutes);
+app.use("/api/notifications", authLimiter, NotificationRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
