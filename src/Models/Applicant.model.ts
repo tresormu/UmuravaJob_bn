@@ -53,6 +53,8 @@ export interface ApplicantAttrs {
   parsedAt?: Date;
   recruiterNotes?: string;
   tags?: string[];
+  aiScore?: number;
+  aiSummary?: string;
 }
 
 export type ApplicantDocument = HydratedDocument<ApplicantAttrs>;
@@ -126,6 +128,8 @@ const ApplicantSchema = new Schema<ApplicantAttrs>(
     parsedAt: { type: Date },
     recruiterNotes: { type: String },
     tags: { type: [String], default: undefined },
+    aiScore: { type: Number, min: 0, max: 100 },
+    aiSummary: { type: String },
   },
   { timestamps: true },
 );

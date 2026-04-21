@@ -12,6 +12,7 @@ import FileUpload from "../Models/FileUpload.model.js";
 import xlsx from "xlsx";
 import NotificationController from "./Notification.controller.js";
 import { NotificationType } from "../Models/Notification.model.js";
+import { ResponseMessages } from "../utils/responseMessages.js";
 import {
   sendApplicationReceivedEmail,
   sendShortlistedEmail,
@@ -117,7 +118,7 @@ class ApplicationPipelineController {
     try {
       const { jobId } = req.params;
       if (typeof jobId !== "string" || !Types.ObjectId.isValid(jobId)) {
-        return res.status(400).json({ message: "Invalid jobId" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("job ID") });
       }
 
       const {
@@ -145,15 +146,15 @@ class ApplicationPipelineController {
       };
 
       if (!fullName || !email) {
-        return res.status(400).json({ message: "fullName and email are required" });
+        return res.status(400).json({ message: "I'm sorry, but we need both the full name and email address to process the application." });
       }
       if (email && !/^\S+@\S+\.\S+$/.test(email)) {
-        return res.status(400).json({ message: "Invalid email" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("email address") });
       }
 
       const job = await Job.findById(jobId);
       if (!job) {
-        return res.status(404).json({ message: "Job not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("job listing") });
       }
 
       const questions = await Question.find({ jobId });
@@ -164,7 +165,7 @@ class ApplicationPipelineController {
         (a) => !a.questionId || !questionById.has(a.questionId),
       );
       if (invalidAnswer) {
-        return res.status(400).json({ message: "Invalid question in answers" });
+        return res.status(400).json({ message: "I'm sorry, one or more of the questions you've answered are no longer valid for this job." });
       }
 
       const answersByQuestion = new Map<string, IncomingAnswer>();
@@ -179,7 +180,7 @@ class ApplicationPipelineController {
         const incoming = answersByQuestion.get(String(question._id));
         if (!incoming) {
           if (question.required) {
-            return res.status(400).json({ message: `Missing answer for: ${question.prompt}` });
+            return res.status(400).json({ message: `I'm sorry, but an answer is required for: ${question.prompt}` });
           }
           continue;
         }
@@ -297,7 +298,7 @@ class ApplicationPipelineController {
       }
 
       if (!applicationId) {
-        return res.status(500).json({ message: "Failed to submit application" });
+        return res.status(500).json({ message: "I'm sorry, we couldn't submit your application at this time. Please try again." });
       }
 
       if (email) {
@@ -325,24 +326,27 @@ class ApplicationPipelineController {
         console.error("Failed to create application notification", notifError);
       }
 
-      return res.status(201).json({ applicationId });
+      return res.status(201).json({ 
+        message: "Your application has been successfully submitted! We wish you the best of luck.",
+        applicationId 
+      });
     } catch (error) {
       if (error instanceof Error && error.message === "DUPLICATE_APPLICATION") {
-        return res.status(409).json({ message: "Application already exists" });
+        return res.status(409).json({ message: "It looks like you have already applied for this position." });
       }
-      return res.status(500).json({ message: "Failed to submit application" });
+      return res.status(500).json({ message: "I'm sorry, we encountered a problem while processing your application. Please try again later." });
     }
   }
 
   static async listJobApplications(req: AuthRequest, res: Response): Promise<Response> {
     try {
       if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
       }
 
       const { jobId } = req.params;
       if (typeof jobId !== "string" || !Types.ObjectId.isValid(jobId)) {
-        return res.status(400).json({ message: "Invalid jobId" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("job ID") });
       }
 
       const page = parsePagination(req.query.page, 1);
@@ -397,24 +401,24 @@ class ApplicationPipelineController {
         pagination: { page, limit, total },
       });
     } catch (error) {
-      return res.status(500).json({ message: "Failed to fetch applications" });
+      return res.status(500).json({ message: "We're sorry, we couldn't fetch the application list for this job." });
     }
   }
 
   static async updateStatus(req: AuthRequest, res: Response): Promise<Response> {
     try {
       if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
       }
 
       const { id } = req.params;
       const { status } = req.body as { status?: string };
 
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: "Invalid application id" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("application ID") });
       }
       if (!status || !["applied", "screened", "shortlisted", "rejected"].includes(status)) {
-        return res.status(400).json({ message: "Invalid status" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("status") });
       }
 
       const updated = await Application.findOneAndUpdate(
@@ -424,7 +428,7 @@ class ApplicationPipelineController {
       ).populate("candidateId");
 
       if (!updated) {
-        return res.status(404).json({ message: "Application not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("application") });
       }
 
       if (status === "shortlisted") {
@@ -443,7 +447,7 @@ class ApplicationPipelineController {
 
       return res.status(200).json({ application: updated });
     } catch (error) {
-      return res.status(500).json({ message: "Failed to update status" });
+      return res.status(500).json({ message: "I'm sorry, we couldn't update the application status at this time." });
     }
   }
 
@@ -451,24 +455,24 @@ class ApplicationPipelineController {
     try {
       const req = _req as AuthRequest & { file?: Express.Multer.File };
       if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
       }
 
       const { jobId } = req.params;
       if (typeof jobId !== "string" || !Types.ObjectId.isValid(jobId)) {
-        return res.status(400).json({ message: "Invalid jobId" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("job ID") });
       }
 
       if (!req.file) {
-        return res.status(400).json({ message: "Excel file is required" });
+        return res.status(400).json({ message: "Please upload an Excel file to proceed." });
       }
 
       const job = await Job.findById(jobId);
       if (!job) {
-        return res.status(404).json({ message: "Job not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("job listing") });
       }
       if (String(job.recruiterId) !== req.user.id) {
-        return res.status(403).json({ message: "Access denied" });
+        return res.status(403).json({ message: ResponseMessages.ERROR.FORBIDDEN });
       }
 
       const fileUpload = await FileUpload.create({
@@ -486,7 +490,7 @@ class ApplicationPipelineController {
           errorCount: 1,
           errors: ["No worksheet found"],
         });
-        return res.status(400).json({ message: "No worksheet found in file" });
+        return res.status(400).json({ message: "We're sorry, but we couldn't find any worksheets in the uploaded file." });
       }
 
       const sheet = workbook.Sheets[sheetName];
@@ -496,7 +500,7 @@ class ApplicationPipelineController {
           errorCount: 1,
           errors: ["Worksheet is missing"],
         });
-        return res.status(400).json({ message: "Worksheet is missing in file" });
+        return res.status(400).json({ message: "I'm sorry, but the worksheet seems to be missing from the file." });
       }
       const rows = xlsx.utils.sheet_to_json<Record<string, unknown>>(sheet, {
         defval: "",
@@ -728,13 +732,13 @@ class ApplicationPipelineController {
       }
 
       return res.status(200).json({
-        message: "Upload processed",
+        message: "The Excel upload has been processed successfully.",
         created: createdCount,
         errors,
       });
     } catch (error) {
       console.error("createApplication error:", error);
-      return res.status(500).json({ message: "Failed to process application" });
+      return res.status(500).json({ message: "I'm sorry, we couldn't complete the Excel import process. Please try again." });
     }
   }
 }

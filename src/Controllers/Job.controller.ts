@@ -3,6 +3,7 @@ import { Types } from "mongoose";
 import Job from "../Models/Job.model.js";
 import type { AuthRequest } from "../types/type.js";
 import { sendJobPostedEmail } from "../utils/email.js";
+import { ResponseMessages } from "../utils/responseMessages.js";
 
 class JobController {
   /**
@@ -13,27 +14,27 @@ class JobController {
       if (!req.user) {
         return res.status(401).json({
           success: false,
-          message: "Unauthorized",
+          message: ResponseMessages.ERROR.UNAUTHORIZED,
         });
       }
       if (req.user.role !== "recruiter") {
         return res.status(403).json({
           success: false,
-          message: "Access denied",
+          message: ResponseMessages.ERROR.FORBIDDEN,
         });
       }
 
       const { title, description, skills, experience, education, location, deadline } =
         req.body;
       if (!title || typeof title !== "string") {
-        return res.status(400).json({ success: false, message: "title is required" });
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.MISSING_FIELD("title") });
       }
       if (!Array.isArray(skills) || skills.length === 0) {
-        return res.status(400).json({ success: false, message: "skills are required" });
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.MISSING_FIELD("skills") });
       }
       const expNum = Number(experience);
       if (!Number.isFinite(expNum) || expNum < 0) {
-        return res.status(400).json({ success: false, message: "experience is invalid" });
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("experience") });
       }
 
       const jobData: any = {
@@ -59,13 +60,13 @@ class JobController {
 
       return res.status(201).json({
         success: true,
-        message: "Job created successfully",
+        message: ResponseMessages.SUCCESS.CREATED("job listing"),
         data: job,
       });
     } catch (error) {
       return res.status(500).json({
         success: false,
-        message: "Error creating job",
+        message: "I'm sorry, we encountered an error while creating your job listing.",
         error: error instanceof Error ? error.message : error,
       });
     }
@@ -95,7 +96,7 @@ class JobController {
     } catch (error) {
       return res.status(500).json({
         success: false,
-        message: "Error fetching jobs",
+        message: "We're having trouble fetching the job list right now. Please try again in a moment.",
         error: error instanceof Error ? error.message : error,
       });
     }
@@ -111,7 +112,7 @@ class JobController {
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid job id",
+          message: ResponseMessages.ERROR.INVALID_FIELD("job id"),
         });
       }
 
@@ -120,7 +121,7 @@ class JobController {
       if (!job) {
         return res.status(404).json({
           success: false,
-          message: "Job not found",
+          message: ResponseMessages.ERROR.NOT_FOUND("job listing"),
         });
       }
 
@@ -131,7 +132,7 @@ class JobController {
     } catch (error) {
       return res.status(500).json({
         success: false,
-        message: "Error fetching job",
+        message: "We're sorry, an error occurred while fetching the job details.",
         error: error instanceof Error ? error.message : error,
       });
     }
@@ -145,13 +146,13 @@ class JobController {
       if (!req.user) {
         return res.status(401).json({
           success: false,
-          message: "Unauthorized",
+          message: ResponseMessages.ERROR.UNAUTHORIZED,
         });
       }
       if (req.user.role !== "recruiter") {
         return res.status(403).json({
           success: false,
-          message: "Access denied",
+          message: ResponseMessages.ERROR.FORBIDDEN,
         });
       }
 
@@ -160,7 +161,7 @@ class JobController {
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid job id",
+          message: ResponseMessages.ERROR.INVALID_FIELD("job id"),
         });
       }
 
@@ -168,28 +169,28 @@ class JobController {
       if (!existingJob) {
         return res.status(404).json({
           success: false,
-          message: "Job not found",
+          message: ResponseMessages.ERROR.NOT_FOUND("job listing"),
         });
       }
       if (String(existingJob.recruiterId) !== req.user.id) {
         return res.status(403).json({
           success: false,
-          message: "Access denied",
+          message: ResponseMessages.ERROR.FORBIDDEN,
         });
       }
 
       const updateData = { ...req.body };
       delete (updateData as { recruiterId?: unknown }).recruiterId;
       if (updateData.title && typeof updateData.title !== "string") {
-        return res.status(400).json({ success: false, message: "Invalid title" });
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("title") });
       }
       if (updateData.skills && (!Array.isArray(updateData.skills) || updateData.skills.length === 0)) {
-        return res.status(400).json({ success: false, message: "Invalid skills" });
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("skills") });
       }
       if (updateData.experience !== undefined) {
         const expNum = Number(updateData.experience);
         if (!Number.isFinite(expNum) || expNum < 0) {
-          return res.status(400).json({ success: false, message: "Invalid experience" });
+          return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("experience") });
         }
         updateData.experience = expNum;
       }
@@ -205,19 +206,19 @@ class JobController {
       if (!updatedJob) {
         return res.status(404).json({
           success: false,
-          message: "Job not found",
+          message: ResponseMessages.ERROR.NOT_FOUND("job listing"),
         });
       }
 
       return res.status(200).json({
         success: true,
-        message: "Job updated successfully",
+        message: ResponseMessages.SUCCESS.UPDATED("job listing"),
         data: updatedJob,
       });
     } catch (error) {
       return res.status(500).json({
         success: false,
-        message: "Error updating job",
+        message: "We encountered a problem while updating your job listing. Please try again.",
         error: error instanceof Error ? error.message : error,
       });
     }
@@ -231,13 +232,13 @@ class JobController {
       if (!req.user) {
         return res.status(401).json({
           success: false,
-          message: "Unauthorized",
+          message: ResponseMessages.ERROR.UNAUTHORIZED,
         });
       }
       if (req.user.role !== "recruiter") {
         return res.status(403).json({
           success: false,
-          message: "Access denied",
+          message: ResponseMessages.ERROR.FORBIDDEN,
         });
       }
 
@@ -246,7 +247,7 @@ class JobController {
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid job id",
+          message: ResponseMessages.ERROR.INVALID_FIELD("job id"),
         });
       }
 
@@ -254,13 +255,13 @@ class JobController {
       if (!existingJob) {
         return res.status(404).json({
           success: false,
-          message: "Job not found",
+          message: ResponseMessages.ERROR.NOT_FOUND("job listing"),
         });
       }
       if (String(existingJob.recruiterId) !== req.user.id) {
         return res.status(403).json({
           success: false,
-          message: "Access denied",
+          message: ResponseMessages.ERROR.FORBIDDEN,
         });
       }
 
@@ -269,18 +270,18 @@ class JobController {
       if (!deletedJob) {
         return res.status(404).json({
           success: false,
-          message: "Job not found",
+          message: ResponseMessages.ERROR.NOT_FOUND("job listing"),
         });
       }
 
       return res.status(200).json({
         success: true,
-        message: "Job deleted successfully",
+        message: ResponseMessages.SUCCESS.DELETED("job listing"),
       });
     } catch (error) {
       return res.status(500).json({
         success: false,
-        message: "Error deleting job",
+        message: "We encountered an error while trying to delete the job listing.",
         error: error instanceof Error ? error.message : error,
       });
     }

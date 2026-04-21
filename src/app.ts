@@ -13,6 +13,8 @@ import Jobrouter from "./Routes/Job.routes.js";
 import ApplicationRoutes from "./Routes/Application.route.js";
 import QuestionRoutes from "./Routes/Question.route.js";
 import NotificationRoutes from "./Routes/Notification.route.js";
+import RecruiterChatRoutes from "./Routes/RecruiterChat.route.js";
+
 
 const app = express();
 
@@ -32,7 +34,10 @@ app.use(
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Increased for testing and general use
-  message: { error: "Too many requests, please try again later." },
+  message: { 
+    success: false,
+    message: "I'm sorry, but we've received too many requests from your connection. Please wait a few minutes before trying again." 
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -48,9 +53,11 @@ app.use("/api/jobs", authLimiter, Jobrouter);
 app.use("/api", authLimiter, QuestionRoutes);
 app.use("/api", authLimiter, ApplicationRoutes);
 app.use("/api/notifications", authLimiter, NotificationRoutes);
+app.use("/api/recruiter/chat", authLimiter, RecruiterChatRoutes);
+
 
 app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
+  res.status(404).json({ success: false, message: "I'm sorry, but we couldn't find the resource you're looking for. Please check the URL and try again." });
 });
 
 app.use(errorMiddleware);

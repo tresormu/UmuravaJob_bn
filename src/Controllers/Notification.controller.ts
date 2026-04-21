@@ -2,6 +2,7 @@ import type { Response } from "express";
 import { Types } from "mongoose";
 import Notification, { NotificationType } from "../Models/Notification.model.js";
 import type { AuthRequest } from "../types/type.js";
+import { ResponseMessages } from "../utils/responseMessages.js";
 
 class NotificationController {
   /**
@@ -10,7 +11,7 @@ class NotificationController {
   static async getNotifications(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({ success: false, message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
 
@@ -40,7 +41,7 @@ class NotificationController {
       });
     } catch (error) {
       console.error("getNotifications error:", error);
-      res.status(500).json({ success: false, message: "Failed to fetch notifications" });
+      res.status(500).json({ success: false, message: "We're sorry, we couldn't fetch your notifications at this time." });
     }
   }
 
@@ -50,7 +51,7 @@ class NotificationController {
   static async getUnreadCount(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({ success: false, message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
 
@@ -64,7 +65,7 @@ class NotificationController {
         data: { unreadCount },
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: "Failed to fetch unread count" });
+      res.status(500).json({ success: false, message: "We apologize, but we couldn't retrieve your unread notification count." });
     }
   }
 
@@ -74,13 +75,13 @@ class NotificationController {
   static async markAsRead(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({ success: false, message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
 
       const id = req.params["id"];
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
-        res.status(400).json({ success: false, message: "Invalid notification ID" });
+        res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("notification ID") });
         return;
       }
 
@@ -91,17 +92,17 @@ class NotificationController {
       );
 
       if (!notification) {
-        res.status(404).json({ success: false, message: "Notification not found" });
+        res.status(404).json({ success: false, message: ResponseMessages.ERROR.NOT_FOUND("notification") });
         return;
       }
 
       res.status(200).json({
         success: true,
-        message: "Notification marked as read",
+        message: "Your notification has been marked as read.",
         data: notification,
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: "Failed to update notification" });
+      res.status(500).json({ success: false, message: "Something went wrong while updating your notification status." });
     }
   }
 
@@ -111,7 +112,7 @@ class NotificationController {
   static async markAllAsRead(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({ success: false, message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
 
@@ -122,10 +123,10 @@ class NotificationController {
 
       res.status(200).json({
         success: true,
-        message: "All notifications marked as read",
+        message: "Great! All your notifications have been marked as read.",
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: "Failed to update notifications" });
+      res.status(500).json({ success: false, message: "We encountered an error while trying to mark your notifications as read." });
     }
   }
 

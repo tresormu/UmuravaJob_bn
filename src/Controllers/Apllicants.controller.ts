@@ -3,6 +3,7 @@ import axios from "axios";
 import { Types } from "mongoose";
 import { PDFParse } from "pdf-parse";
 import Applicant from "../Models/Applicant.model.js";
+import { ResponseMessages } from "../utils/responseMessages.js";
 
 type SkillLevel = "Beginner" | "Intermediate" | "Advanced" | "Expert";
 type LanguageProficiency = "Basic" | "Conversational" | "Fluent" | "Native";
@@ -364,7 +365,7 @@ class ApplicantScreeningController {
 		res: Response,
 	): Promise<void> {
 		res.status(200).json({
-			message: "Applicant screening schema",
+			message: "Here is the applicant screening schema you requested.",
 			schema: APPLICANT_SCREENING_SCHEMA_EXAMPLE,
 		});
 	}
@@ -382,7 +383,7 @@ class ApplicantScreeningController {
 			const files = requestWithFiles.files ?? [];
 
 			if (files.length === 0) {
-				res.status(400).json({ message: "At least one PDF file is required" });
+				res.status(400).json({ message: "I'm sorry, but at least one PDF file is required for this process." });
 				return;
 			}
 
@@ -410,14 +411,14 @@ class ApplicantScreeningController {
 
 			if (processed.length === 0) {
 				res.status(422).json({
-					message: "No CV could be processed",
+					message: "We're sorry, but none of the uploaded CVs could be processed. Please check the file format and try again.",
 					failed,
 				});
 				return;
 			}
 
 			res.status(200).json({
-				message: "Applicant data extracted and saved",
+				message: "Great! The applicant data has been successfully extracted and saved.",
 				totalUploaded: files.length,
 				totalSaved: processed.length,
 				totalFailed: failed.length,
@@ -426,7 +427,7 @@ class ApplicantScreeningController {
 			});
 		} catch (error) {
 			res.status(500).json({
-				message: "Failed to complete applicant screening",
+				message: "I'm sorry, we encountered a problem while completing the applicant screening process.",
 				error: error instanceof Error ? error.message : "Unknown error",
 			});
 		}

@@ -10,6 +10,7 @@ import {
     GenerateRefreshToken,
     VerifyRefreshToken,
 } from "../utils/token.js";
+import { ResponseMessages } from "../utils/responseMessages.js";
 
 const generateVerificationCode = (): string =>
     String(crypto.randomInt(100000, 1000000));
@@ -28,13 +29,13 @@ class RecruiterController {
             if (!firstName || !lastName || !email || !password) {
                 return res.status(400).json({
                     success: false,
-                    message: "firstName, lastName, email, and password are required",
+                    message: "I'm sorry, but we need your first name, last name, email, and password to create your account.",
                 });
             }
             if (!/^\S+@\S+\.\S+$/.test(email)) {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid email",
+                    message: ResponseMessages.ERROR.INVALID_FIELD("email address"),
                 });
             }
 
@@ -42,7 +43,7 @@ class RecruiterController {
             if (existing) {
                 return res.status(409).json({
                     success: false,
-                    message: "Email already in use",
+                    message: ResponseMessages.ERROR.EMAIL_ALREADY_IN_USE,
                 });
             }
             
@@ -78,7 +79,7 @@ class RecruiterController {
             
             return res.status(201).json({ 
                 success: true, 
-                message: "Recruiter created successfully. Verification code sent.", 
+                message: "Welcome! Your recruiter profile has been created successfully, and a verification code has been sent to your email.", 
                 recruiter 
             });
         } catch (error) {
@@ -90,7 +91,7 @@ class RecruiterController {
                 error instanceof Error ? error.message : "Failed to create recruiter";
             return res.status(500).json({
                 success: false,
-                message: "Failed to create recruiter",
+                message: "I'm sorry, we encountered a problem while creating your account. Please try again.",
                 error: process.env.NODE_ENV === "test" ? message : undefined,
             });
         }
@@ -104,13 +105,13 @@ class RecruiterController {
             const recruiter = await Recruiter.find();
             return res.status(200).json({ 
                 success: true, 
-                message: "Recruiters fetched successfully", 
+                message: ResponseMessages.SUCCESS.FETCHED("Recruiters"), 
                 recruiter 
             });
         } catch (error) {
             return res.status(500).json({ 
                 success: false, 
-                message: "Failed to fetch recruiters", 
+                message: "We're sorry, we couldn't fetch the recruiter list at the moment.", 
                 error: error instanceof Error ? error.message : error 
             });
         }
@@ -125,18 +126,18 @@ class RecruiterController {
             const recruiter = await Recruiter.findById(id);
             
             if (!recruiter) {
-                return res.status(404).json({ success: false, message: "Recruiter not found" });
+                return res.status(404).json({ success: false, message: ResponseMessages.ERROR.NOT_FOUND("recruiter profile") });
             }
 
             return res.status(200).json({ 
                 success: true, 
-                message: "Recruiter fetched successfully", 
+                message: ResponseMessages.SUCCESS.FETCHED("Recruiter profile"), 
                 recruiter 
             });
         } catch (error) {
             return res.status(500).json({ 
                 success: false, 
-                message: "Failed to fetch recruiter", 
+                message: "We apologize, but we couldn't retrieve that recruiter's profile.", 
                 error: error instanceof Error ? error.message : error 
             });
         }
@@ -149,7 +150,7 @@ class RecruiterController {
         try {
             const { id } = req.params;
             if (!req.user || req.user.id !== id) {
-                return res.status(403).json({ success: false, message: "Access denied" });
+                return res.status(403).json({ success: false, message: ResponseMessages.ERROR.FORBIDDEN });
             }
             const { firstName, lastName, email, password, phone, companyName, companyWebsite, position, bio } = req.body;
             
@@ -164,18 +165,18 @@ class RecruiterController {
             const recruiter = await Recruiter.findByIdAndUpdate(id, updateData, { new: true });
             
             if (!recruiter) {
-                return res.status(404).json({ success: false, message: "Recruiter not found" });
+                return res.status(404).json({ success: false, message: ResponseMessages.ERROR.NOT_FOUND("recruiter profile") });
             }
 
             return res.status(200).json({ 
                 success: true, 
-                message: "Recruiter updated successfully", 
+                message: ResponseMessages.SUCCESS.UPDATED("recruiter profile"), 
                 recruiter 
             });
         } catch (error) {
             return res.status(500).json({ 
                 success: false, 
-                message: "Failed to update recruiter", 
+                message: "I'm sorry, we couldn't update your profile at this time. Please try again.", 
                 error: error instanceof Error ? error.message : error 
             });
         }
@@ -188,12 +189,12 @@ class RecruiterController {
         try {
             const { id } = req.params;
             if (!req.user || req.user.id !== id) {
-                return res.status(403).json({ success: false, message: "Access denied" });
+                return res.status(403).json({ success: false, message: ResponseMessages.ERROR.FORBIDDEN });
             }
             const recruiter = await Recruiter.findByIdAndDelete(id);
             
             if (!recruiter) {
-                return res.status(404).json({ success: false, message: "Recruiter not found" });
+                return res.status(404).json({ success: false, message: ResponseMessages.ERROR.NOT_FOUND("recruiter profile") });
             }
 
             try {
@@ -204,13 +205,13 @@ class RecruiterController {
 
             return res.status(200).json({ 
                 success: true, 
-                message: "Recruiter deleted successfully", 
+                message: ResponseMessages.SUCCESS.DELETED("recruiter profile"), 
                 recruiter 
             });
         } catch (error) {
             return res.status(500).json({ 
                 success: false, 
-                message: "Failed to delete recruiter", 
+                message: "We're sorry, we encountered an error while trying to delete your profile.", 
                 error: error instanceof Error ? error.message : error 
             });
         }
@@ -225,7 +226,7 @@ class RecruiterController {
             if (!email || !password) {
                 return res.status(400).json({
                     success: false,
-                    message: "Email and password are required",
+                    message: "Please provide both your email and password to log in.",
                 });
             }
 
@@ -233,13 +234,13 @@ class RecruiterController {
             if (!recruiter || !recruiter.password) {
                 return res.status(401).json({
                     success: false,
-                    message: "Invalid credentials",
+                    message: ResponseMessages.ERROR.INVALID_CREDENTIALS,
                 });
             }
             if (!recruiter.isEmailVerified) {
                 return res.status(403).json({
                     success: false,
-                    message: "Email not verified",
+                    message: ResponseMessages.ERROR.EMAIL_NOT_VERIFIED,
                 });
             }
 
@@ -247,7 +248,7 @@ class RecruiterController {
             if (!isValid) {
                 return res.status(401).json({
                     success: false,
-                    message: "Invalid credentials",
+                    message: ResponseMessages.ERROR.INVALID_CREDENTIALS,
                 });
             }
 
@@ -269,7 +270,7 @@ class RecruiterController {
 
             return res.status(200).json({
                 success: true,
-                message: "Login successful",
+                message: ResponseMessages.SUCCESS.LOGIN,
                 accessToken,
                 refreshToken,
                 recruiter: recruiterSafe,
@@ -277,7 +278,7 @@ class RecruiterController {
         } catch (error) {
             return res.status(500).json({
                 success: false,
-                message: "Failed to login",
+                message: "I'm sorry, we couldn't log you in at the moment. Please try again later.",
                 error: error instanceof Error ? error.message : error,
             });
         }
@@ -292,7 +293,7 @@ class RecruiterController {
             if (!refreshToken) {
                 return res.status(400).json({
                     success: false,
-                    message: "Refresh token is required",
+                    message: "I'm sorry, a refresh token is required to proceed.",
                 });
             }
 
@@ -302,7 +303,7 @@ class RecruiterController {
             } catch {
                 return res.status(401).json({
                     success: false,
-                    message: "Invalid or expired refresh token",
+                    message: ResponseMessages.ERROR.INVALID_TOKEN,
                 });
             }
 
@@ -310,7 +311,7 @@ class RecruiterController {
             if (!recruiter || recruiter.refreshToken !== refreshToken) {
                 return res.status(401).json({
                     success: false,
-                    message: "Invalid or expired refresh token",
+                    message: ResponseMessages.ERROR.INVALID_TOKEN,
                 });
             }
 
@@ -327,14 +328,14 @@ class RecruiterController {
 
             return res.status(200).json({
                 success: true,
-                message: "Token refreshed",
+                message: ResponseMessages.SUCCESS.TOKEN_REFRESHED,
                 accessToken,
                 refreshToken: newRefreshToken,
             });
         } catch (error) {
             return res.status(500).json({
                 success: false,
-                message: "Failed to refresh token",
+                message: "We're sorry, we couldn't refresh your session. Please log in again.",
                 error: error instanceof Error ? error.message : error,
             });
         }
@@ -349,7 +350,7 @@ class RecruiterController {
             if (!refreshToken) {
                 return res.status(400).json({
                     success: false,
-                    message: "Refresh token is required",
+                    message: "I'm sorry, a refresh token is required to proceed.",
                 });
             }
 
@@ -361,12 +362,12 @@ class RecruiterController {
 
             return res.status(200).json({
                 success: true,
-                message: "Logged out successfully",
+                message: ResponseMessages.SUCCESS.LOGOUT,
             });
         } catch (error) {
             return res.status(500).json({
                 success: false,
-                message: "Failed to logout",
+                message: "We encountered an issue while logging you out.",
                 error: error instanceof Error ? error.message : error,
             });
         }
@@ -381,39 +382,39 @@ class RecruiterController {
             if (!email || !code) {
                 return res.status(400).json({
                     success: false,
-                    message: "Email and code are required",
+                    message: "Please provide both your email and the verification code.",
                 });
             }
             const recruiter = await Recruiter.findOne({ email });
             if (!recruiter) {
                 return res.status(404).json({
                     success: false,
-                    message: "Recruiter not found",
+                    message: ResponseMessages.ERROR.NOT_FOUND("recruiter profile"),
                 });
             }
             if (recruiter.isEmailVerified) {
                 return res.status(200).json({
                     success: true,
-                    message: "Email already verified",
+                    message: ResponseMessages.SUCCESS.EMAIL_VERIFIED,
                 });
             }
             if (!recruiter.emailVerificationToken || !recruiter.emailVerificationExpires) {
                 return res.status(400).json({
                     success: false,
-                    message: "Verification code not found",
+                    message: "I'm sorry, I couldn't find a verification code for this account.",
                 });
             }
             if (recruiter.emailVerificationExpires.getTime() < Date.now()) {
                 return res.status(400).json({
                     success: false,
-                    message: "Verification code expired",
+                    message: ResponseMessages.ERROR.EXPIRED_CODE,
                 });
             }
             const codeHash = hashToken(code);
             if (codeHash !== recruiter.emailVerificationToken) {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid verification code",
+                    message: ResponseMessages.ERROR.INVALID_CODE,
                 });
             }
 
@@ -424,12 +425,12 @@ class RecruiterController {
 
             return res.status(200).json({
                 success: true,
-                message: "Email verified successfully",
+                message: ResponseMessages.SUCCESS.EMAIL_VERIFIED,
             });
         } catch (error) {
             return res.status(500).json({
                 success: false,
-                message: "Failed to verify email",
+                message: "I'm sorry, we couldn't verify your email address. Please try again.",
                 error: error instanceof Error ? error.message : error,
             });
         }
@@ -444,20 +445,20 @@ class RecruiterController {
             if (!email) {
                 return res.status(400).json({
                     success: false,
-                    message: "Email is required",
+                    message: "Please provide your email address to resend the code.",
                 });
             }
             const recruiter = await Recruiter.findOne({ email });
             if (!recruiter) {
                 return res.status(404).json({
                     success: false,
-                    message: "Recruiter not found",
+                    message: ResponseMessages.ERROR.NOT_FOUND("recruiter profile"),
                 });
             }
             if (recruiter.isEmailVerified) {
                 return res.status(200).json({
                     success: true,
-                    message: "Email already verified",
+                    message: ResponseMessages.SUCCESS.EMAIL_VERIFIED,
                 });
             }
 
@@ -470,12 +471,12 @@ class RecruiterController {
 
             return res.status(200).json({
                 success: true,
-                message: "Verification code resent",
+                message: ResponseMessages.SUCCESS.CODE_RESENT,
             });
         } catch (error) {
             return res.status(500).json({
                 success: false,
-                message: "Failed to resend verification code",
+                message: "I'm sorry, we couldn't resend your verification code. Please try again.",
                 error: error instanceof Error ? error.message : error,
             });
         }

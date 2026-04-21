@@ -3,9 +3,12 @@ import axios from "axios";
 import { Types } from "mongoose";
 import Applicant from "../Models/Applicant.model.js";
 import Job from "../Models/Job.model.js";
+import Answer from "../Models/Answer.model.js";
+import Question from "../Models/Question.model.js";
+import { ResponseMessages } from "../utils/responseMessages.js";
 
 interface RankedCandidate {
-  rank: number;
+  applicant_id: string;
   candidate_name: string;
   score: number;
   summary: string;
@@ -73,6 +76,7 @@ const listGeminiModelsForVersion = async (
 const rankApplicantsWithGemini = async (
   jobData: Record<string, unknown>,
   applicantsData: Array<Record<string, unknown>>,
+  hasQuestions: boolean,
 ): Promise<RankedCandidatesResponse> => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -82,34 +86,31 @@ const rankApplicantsWithGemini = async (
   const prompt = `You are an AI recruitment assistant.
 
 You will receive:
-- One job 
-- Multiple candidate CVs
+- One job description and requirements
+- Multiple candidate profiles (including CV text and answers to application questions)
 
 Task:
-1. Score each candidate using the defined scoring system
-2. Rank candidates from highest to lowest
-3. Provide a short justification for ranking
+1. Score each candidate (0-100) based on how well they match the job requirements.
+2. Provide a detailed reasoning/explanation for the score, highlighting strengths and missing qualifications.
+${hasQuestions ? "3. Pay special attention to the answers provided to the job-specific questions." : "3. Note: No additional application questions were asked for this role."}
 
-Return output in JSON:
-
+Return output in JSON format with this exact structure:
 {
   "ranked_candidates": [
     {
-      "rank": 1,
-      "candidate_name": "",
-      "score": ,
-      "summary": ""
+      "applicant_id": "string",
+      "candidate_name": "string",
+      "score": number,
+      "summary": "detailed reasoning here"
     }
   ]
 }
 
-Scoring system:
-- Skills: 50
-- Experience: 30
-- Education: 10
-- Relevance: 10
-
-Be consistent across all candidates.
+Scoring criteria:
+- Skills Match: 50 points
+- Relevant Experience: 30 points
+- Education: 10 points
+- Quality of Answers: 10 points
 
 Job:
 ${JSON.stringify(jobData, null, 2)}
@@ -173,19 +174,22 @@ class ApplicantRankingController {
   static async rankApplicantsForJob(req: Request, res: Response): Promise<void> {
     try {
       const jobId = typeof req.query.jobId === "string" ? req.query.jobId : undefined;
+      const topN = typeof req.query.topN === "string" ? parseInt(req.query.topN, 10) : 10;
+      const batchSize = 20;
+
       if (!jobId) {
-        res.status(400).json({ message: "jobId query parameter is required" });
+        res.status(400).json({ message: ResponseMessages.ERROR.MISSING_FIELD("job ID") });
         return;
       }
 
       if (!Types.ObjectId.isValid(jobId)) {
-        res.status(400).json({ message: "Invalid jobId" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("job ID") });
         return;
       }
 
       const job = await Job.findById(jobId).lean();
       if (!job) {
-        res.status(404).json({ message: "Job not found" });
+        res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("job listing") });
         return;
       }
 
@@ -194,58 +198,90 @@ class ApplicantRankingController {
         .lean();
 
       if (applicants.length === 0) {
-        res.status(404).json({ message: "No applicants found for this job" });
+        res.status(404).json({ message: "I'm sorry, but we couldn't find any applicants for this job pool yet." });
         return;
       }
 
+      const questions = await Question.find({ jobId: job._id }).lean();
+      const questionMap = new Map(questions.map((q) => [String(q._id), q.prompt]));
+
+      const applicationIds = applicants
+        .map((a) => a.applicationId)
+        .filter((id): id is Types.ObjectId => id !== undefined);
+
+      const allAnswers = await Answer.find({ applicationId: { $in: applicationIds } }).lean();
+      const answersByApplicationId = new Map<string, Array<{ question: string; answer: unknown }>>();
+
+      for (const ans of allAnswers) {
+        const appId = String(ans.applicationId);
+        const existing = answersByApplicationId.get(appId) || [];
+        existing.push({
+          question: questionMap.get(String(ans.questionId)) || "Unknown Question",
+          answer: ans.valueText || ans.value,
+        });
+        answersByApplicationId.set(appId, existing);
+      }
+
       const jobPayload = {
-        id: String(job._id),
         title: job.title,
         description: job.description ?? "",
         skills: job.skills ?? [],
         experience: job.experience ?? 0,
         education: job.education ?? "",
-        location: job.location ?? "",
       };
 
-      const candidatesPayload = applicants.map((applicant) => {
-        const parsedData = applicant.parsedData ?? {};
-        const structuredProfile = applicant.structuredProfile ?? {};
+      const results: RankedCandidate[] = [];
 
-        return {
-          applicant_id: String(applicant._id),
-          candidate_name: applicant.fullName,
-          email: applicant.email ?? "",
-          location: applicant.location ?? "",
-          skills: parsedData.skills ?? structuredProfile.skills ?? [],
-          experience_years: parsedData.experienceYears ?? 0,
-          education: parsedData.education ?? structuredProfile.education ?? [],
-          resume_text: applicant.resumeText ?? "",
-          applicant_profile: applicant.applicantProfile ?? {},
-        };
-      });
+      for (let i = 0; i < applicants.length; i += batchSize) {
+        const batch = applicants.slice(i, i + batchSize);
+        const candidatesPayload = batch.map((applicant) => {
+          const parsedData = applicant.parsedData ?? {};
+          return {
+            applicant_id: String(applicant._id),
+            candidate_name: applicant.fullName,
+            email: applicant.email ?? "",
+            phone: applicant.phone ?? "",
+            location: applicant.location ?? "",
+            skills: parsedData.skills ?? [],
+            experience_years: parsedData.experienceYears ?? 0,
+            education: parsedData.education ?? [],
+            resume_text: applicant.resumeText ?? "",
+            answers: applicant.applicationId ? (answersByApplicationId.get(String(applicant.applicationId)) || []) : [],
+          };
+        });
 
-      const ranking = await rankApplicantsWithGemini(jobPayload, candidatesPayload);
+        const batchRanking = await rankApplicantsWithGemini(jobPayload, candidatesPayload, questions.length > 0);
+        results.push(...batchRanking.ranked_candidates);
+      }
 
-      const topTen = ranking.ranked_candidates
+      // Bulk update applicants with AI scores and summaries
+      const bulkOps = results.map((res) => ({
+        updateOne: {
+          filter: { _id: new Types.ObjectId(res.applicant_id) },
+          update: { $set: { aiScore: res.score, aiSummary: res.summary } },
+        },
+      }));
+
+      await Applicant.bulkWrite(bulkOps);
+
+      const topCandidates = results
         .sort((a, b) => b.score - a.score)
-        .slice(0, 10)
+        .slice(0, topN)
         .map((candidate, index) => ({
           rank: index + 1,
-          candidate_name: candidate.candidate_name,
-          score: candidate.score,
-          summary: candidate.summary,
+          ...candidate,
         }));
 
       res.status(200).json({
-        message: "Applicants ranked successfully",
+        success: true,
+        message: "The application pool has been successfully ranked by our AI assistant.",
         jobId,
         totalApplicants: applicants.length,
-        ranked_candidates: topTen,
+        ranked_candidates: topCandidates,
       });
     } catch (error) {
       res.status(500).json({
-        message: "Failed to rank applicants",
+        message: "I'm sorry, we encountered a problem while ranking the applicants. Please try again.",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -253,3 +289,4 @@ class ApplicantRankingController {
 }
 
 export default ApplicantRankingController;
+

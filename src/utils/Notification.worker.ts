@@ -13,23 +13,16 @@ export const initNotificationWorker = () => {
     await checkExpiredJobs();
   });
 
-  // For testing/demo purposes, we could also run it every hour
-  // cron.schedule("0 * * * *", checkExpiredJobs);
 };
 
-/**
- * Checks for jobs that have recently reached their deadline
- */
+
 const checkExpiredJobs = async () => {
   try {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    
+
     const now = new Date();
 
-    // Find jobs that expired in the last 24 hours and haven't been notified yet
-    // We can use a property in 'data' of notification to avoid double notification, 
-    // or just assume we run once a day.
     const expiredJobs = await Job.find({
       deadline: {
         $gte: yesterday,

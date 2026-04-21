@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { Types } from "mongoose";
+import { ResponseMessages } from "../utils/responseMessages.js";
 import type { AuthRequest } from "../types/type.js";
 import Job from "../Models/Job.model.js";
 import Question from "../Models/Question.model.js";
@@ -11,12 +12,12 @@ class QuestionController {
   static async createQuestion(req: AuthRequest, res: Response): Promise<Response> {
     try {
       if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
       }
 
       const { jobId } = req.params;
       if (typeof jobId !== "string" || !Types.ObjectId.isValid(jobId)) {
-        return res.status(400).json({ message: "Invalid jobId" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("job ID") });
       }
 
       const { prompt, type, required, options, order } = req.body as {
@@ -28,14 +29,14 @@ class QuestionController {
       };
 
       if (!prompt) {
-        return res.status(400).json({ message: "prompt is required" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.MISSING_FIELD("prompt") });
       }
 
       if (
         type &&
         !["text", "single_choice", "multi_choice", "number", "date", "boolean"].includes(type)
       ) {
-        return res.status(400).json({ message: "Invalid question type" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("question type") });
       }
 
       if (isChoiceType(type)) {
@@ -48,10 +49,10 @@ class QuestionController {
 
       const job = await Job.findById(jobId);
       if (!job) {
-        return res.status(404).json({ message: "Job not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("job listing") });
       }
       if (String(job.recruiterId) !== req.user.id) {
-        return res.status(403).json({ message: "Access denied" });
+        return res.status(403).json({ message: ResponseMessages.ERROR.FORBIDDEN });
       }
 
       const createData: Record<string, unknown> = {
@@ -69,7 +70,7 @@ class QuestionController {
 
       return res.status(201).json({ data: question, question });
     } catch (error) {
-      return res.status(500).json({ message: "Failed to create question" });
+      return res.status(500).json({ message: "I'm sorry, we couldn't create the question at this time. Please try again." });
     }
   }
 
@@ -77,37 +78,37 @@ class QuestionController {
     try {
       const { jobId } = req.params;
       if (typeof jobId !== "string" || !Types.ObjectId.isValid(jobId)) {
-        return res.status(400).json({ message: "Invalid jobId" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("job ID") });
       }
 
       const questions = await Question.find({ jobId }).sort({ order: 1, createdAt: 1 });
       return res.status(200).json({ questions });
     } catch (error) {
-      return res.status(500).json({ message: "Failed to fetch questions" });
+      return res.status(500).json({ message: "We apologize, but we couldn't fetch the questions for this job." });
     }
   }
 
   static async updateQuestion(req: AuthRequest, res: Response): Promise<Response> {
     try {
       if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
       }
       const { id } = req.params;
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: "Invalid question id" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("question ID") });
       }
 
       const question = await Question.findById(id);
       if (!question) {
-        return res.status(404).json({ message: "Question not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("question") });
       }
 
       const job = await Job.findById(question.jobId);
       if (!job) {
-        return res.status(404).json({ message: "Job not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("job listing") });
       }
       if (String(job.recruiterId) !== req.user.id) {
-        return res.status(403).json({ message: "Access denied" });
+        return res.status(403).json({ message: ResponseMessages.ERROR.FORBIDDEN });
       }
 
       const { prompt, type, required, options, order } = req.body as {
@@ -122,7 +123,7 @@ class QuestionController {
         type &&
         !["text", "single_choice", "multi_choice", "number", "date", "boolean"].includes(type)
       ) {
-        return res.status(400).json({ message: "Invalid question type" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("question type") });
       }
 
       if (type && isChoiceType(type) && (!Array.isArray(options) || options.length < 2)) {
@@ -148,42 +149,42 @@ class QuestionController {
       });
 
       if (!updated) {
-        return res.status(404).json({ message: "Question not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("question") });
       }
 
       return res.status(200).json({ question: updated });
     } catch (error) {
-      return res.status(500).json({ message: "Failed to update question" });
+      return res.status(500).json({ message: "We encountered a problem while updating the question. Please try again." });
     }
   }
 
   static async deleteQuestion(req: AuthRequest, res: Response): Promise<Response> {
     try {
       if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
       }
       const { id } = req.params;
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: "Invalid question id" });
+        return res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("question ID") });
       }
 
       const question = await Question.findById(id);
       if (!question) {
-        return res.status(404).json({ message: "Question not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("question") });
       }
 
       const job = await Job.findById(question.jobId);
       if (!job) {
-        return res.status(404).json({ message: "Job not found" });
+        return res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("job listing") });
       }
       if (String(job.recruiterId) !== req.user.id) {
-        return res.status(403).json({ message: "Access denied" });
+        return res.status(403).json({ message: ResponseMessages.ERROR.FORBIDDEN });
       }
 
       await Question.findByIdAndDelete(id);
-      return res.status(200).json({ message: "Question deleted successfully" });
+      return res.status(200).json({ message: ResponseMessages.SUCCESS.DELETED("question") });
     } catch (error) {
-      return res.status(500).json({ message: "Failed to delete question" });
+      return res.status(500).json({ message: "I'm sorry, we couldn't delete the question at this time." });
     }
   }
 }

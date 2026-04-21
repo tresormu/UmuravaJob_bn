@@ -9,6 +9,7 @@ import type { AuthRequest } from "../types/type.js";
 import { sendShortlistedEmail } from "../utils/email.js";
 import NotificationController from "./Notification.controller.js";
 import { NotificationType } from "../Models/Notification.model.js";
+import { ResponseMessages } from "../utils/responseMessages.js";
 
 class ApplicantsController {
   private static addIfDefined(
@@ -24,7 +25,7 @@ class ApplicantsController {
   static async GetApplicants(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ message: "Unauthorized" });
+        res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
       const userId = req.user.id;
@@ -32,7 +33,7 @@ class ApplicantsController {
       const jobId =
         typeof req.query?.jobId === "string" ? req.query.jobId : undefined;
       if (jobId && !Types.ObjectId.isValid(jobId)) {
-        res.status(400).json({ message: "Invalid jobId" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("job ID") });
         return;
       }
 
@@ -54,7 +55,7 @@ class ApplicantsController {
 
       res.status(200).json({ applicants, pagination: { page, limit, total } });
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch applicants" });
+      res.status(500).json({ message: "We're sorry, we couldn't fetch the applicant list at this time." });
     }
   }
 
@@ -62,12 +63,12 @@ class ApplicantsController {
     try {
       const id = req.params["id"];
       if (!req.user) {
-        res.status(401).json({ message: "Unauthorized" });
+        res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
       const userId = req.user.id;
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
-        res.status(400).json({ message: "Invalid applicant id" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("applicant ID") });
         return;
       }
 
@@ -77,20 +78,20 @@ class ApplicantsController {
       });
 
       if (!applicant) {
-        res.status(404).json({ message: "Applicant not found" });
+        res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("applicant profile") });
         return;
       }
 
       res.status(200).json({ applicant });
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch applicant" });
+      res.status(500).json({ message: "I'm sorry, we couldn't retrieve the applicant's details right now." });
     }
   }
 
   static async CreateApplicant(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ message: "Unauthorized" });
+        res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
       const userId = req.user.id;
@@ -119,25 +120,25 @@ class ApplicantsController {
       } = req.body;
       if (!jobId || !fullName || !source) {
         res.status(400).json({
-          message: "jobId, fullName, and source are required",
+          message: "I'm sorry, but jobId, fullName, and source are required to create an applicant.",
         });
         return;
       }
       if (!Types.ObjectId.isValid(jobId)) {
-        res.status(400).json({ message: "Invalid jobId" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("job ID") });
         return;
       }
       const job = await Job.findById(jobId);
       if (!job) {
-        res.status(404).json({ message: "Job not found" });
+        res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("job listing") });
         return;
       }
       if (String(job.recruiterId) !== userId) {
-        res.status(403).json({ message: "Access denied" });
+        res.status(403).json({ message: ResponseMessages.ERROR.FORBIDDEN });
         return;
       }
       if (email && !/^\S+@\S+\.\S+$/.test(email)) {
-        res.status(400).json({ message: "Invalid email" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("email address") });
         return;
       }
 
@@ -253,7 +254,10 @@ class ApplicantsController {
         // session.endSession();
       }
 
-      res.status(201).json({ applicant });
+      res.status(201).json({ 
+        message: ResponseMessages.SUCCESS.CREATED("applicant profile"),
+        applicant 
+      });
     } catch (error) {
       console.error("CreateApplicant error:", error);
       throw error;
@@ -264,21 +268,21 @@ class ApplicantsController {
     try {
       const id = req.params["id"];
       if (!req.user) {
-        res.status(401).json({ message: "Unauthorized" });
+        res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
       const userId = req.user.id;
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
-        res.status(400).json({ message: "Invalid applicant id" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("applicant ID") });
         return;
       }
       const existingApplicant = await Applicant.findById(id);
       if (!existingApplicant) {
-        res.status(404).json({ message: "Applicant not found" });
+        res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("applicant profile") });
         return;
       }
       if (String(existingApplicant.recruiterId) !== userId) {
-        res.status(403).json({ message: "Access denied" });
+        res.status(403).json({ message: ResponseMessages.ERROR.FORBIDDEN });
         return;
       }
 
@@ -308,7 +312,7 @@ class ApplicantsController {
         if (key in req.body) updateData[key] = req.body[key];
       }
       if (updateData.email && !/^\S+@\S+\.\S+$/.test(String(updateData.email))) {
-        res.status(400).json({ message: "Invalid email" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("email address") });
         return;
       }
       if (
@@ -317,7 +321,7 @@ class ApplicantsController {
           String(updateData.status),
         )
       ) {
-        res.status(400).json({ message: "Invalid status" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("status") });
         return;
       }
 
@@ -328,7 +332,7 @@ class ApplicantsController {
       );
 
       if (!updatedApplicant) {
-        res.status(404).json({ message: "Applicant not found" });
+        res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("applicant profile") });
         return;
       }
 
@@ -350,9 +354,12 @@ class ApplicantsController {
         }
       }
 
-      res.status(200).json({ applicant: updatedApplicant });
+      res.status(200).json({ 
+        message: ResponseMessages.SUCCESS.UPDATED("applicant profile"),
+        applicant: updatedApplicant 
+      });
     } catch (error) {
-      res.status(500).json({ message: "Failed to update applicant" });
+      res.status(500).json({ message: "I'm sorry, we couldn't update the applicant's profile at this time." });
     }
   }
 
@@ -360,21 +367,21 @@ class ApplicantsController {
     try {
       const id = req.params["id"];
       if (!req.user) {
-        res.status(401).json({ message: "Unauthorized" });
+        res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
         return;
       }
       const userId = req.user.id;
       if (typeof id !== "string" || !Types.ObjectId.isValid(id)) {
-        res.status(400).json({ message: "Invalid applicant id" });
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("applicant ID") });
         return;
       }
       const existingApplicant = await Applicant.findById(id);
       if (!existingApplicant) {
-        res.status(404).json({ message: "Applicant not found" });
+        res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("applicant profile") });
         return;
       }
       if (String(existingApplicant.recruiterId) !== userId) {
-        res.status(403).json({ message: "Access denied" });
+        res.status(403).json({ message: ResponseMessages.ERROR.FORBIDDEN });
         return;
       }
 
@@ -384,13 +391,13 @@ class ApplicantsController {
       });
 
       if (!deleted) {
-        res.status(404).json({ message: "Applicant not found" });
+        res.status(404).json({ message: ResponseMessages.ERROR.NOT_FOUND("applicant profile") });
         return;
       }
 
-      res.status(200).json({ message: "Applicant deleted successfully" });
+      res.status(200).json({ message: ResponseMessages.SUCCESS.DELETED("applicant profile") });
     } catch (error) {
-      res.status(500).json({ message: "Failed to delete applicant" });
+      res.status(500).json({ message: "We encountered a problem while trying to delete the applicant record." });
     }
   }
 }
