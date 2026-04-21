@@ -1,20 +1,25 @@
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose, { Schema, Types } from "mongoose";
+import type { HydratedDocument, Model } from "mongoose";
 
 // Interface (TypeScript)
-export interface IJob extends Document {
+export interface JobAttrs {
   title: string;
   description?: string;
   skills: string[];
   experience: number;
   education?: string;
   location?: string;
-  recruiterId: mongoose.Types.ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
+  recruiterId: Types.ObjectId;
+  deadline?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
+export type JobDocument = HydratedDocument<JobAttrs>;
+export type JobModel = Model<JobAttrs>;
+
 // Schema
-const JobSchema: Schema = new Schema(
+const JobSchema: Schema = new Schema<JobAttrs>(
   {
     title: {
       type: String,
@@ -51,6 +56,9 @@ const JobSchema: Schema = new Schema(
       ref: "Recruiter",
       required: true,
     },
+    deadline: {
+      type: Date,
+    },
   },
   {
     timestamps: true, // adds createdAt & updatedAt
@@ -58,4 +66,4 @@ const JobSchema: Schema = new Schema(
 );
 
 // Model
-export default mongoose.model<IJob>("Job", JobSchema);
+export default mongoose.model<JobAttrs, JobModel>("Job", JobSchema);

@@ -1,7 +1,7 @@
-import type { IJob } from '../Models/Job.model.js';
+import type { JobAttrs } from '../Models/Job.model.js';
 
 // Partial jobs without IDs. Seeding logic will assign these.
-export const jobs: Partial<IJob>[] = [
+export const jobs: Partial<JobAttrs>[] = [
   {
     title: 'Frontend Developer',
     description: 'Build responsive web applications using React and TypeScript.',
