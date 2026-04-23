@@ -24,10 +24,26 @@ class JobController {
         });
       }
 
-      const { title, description, skills, experience, education, location, deadline } =
+      const {
+        title,
+        department,
+        employmentType,
+        description,
+        skills,
+        experience,
+        education,
+        location,
+        deadline,
+      } =
         req.body;
       if (!title || typeof title !== "string") {
         return res.status(400).json({ success: false, message: ResponseMessages.ERROR.MISSING_FIELD("title") });
+      }
+      if (department !== undefined && typeof department !== "string") {
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("department") });
+      }
+      if (employmentType !== undefined && typeof employmentType !== "string") {
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("employment type") });
       }
       if (!Array.isArray(skills) || skills.length === 0) {
         return res.status(400).json({ success: false, message: ResponseMessages.ERROR.MISSING_FIELD("skills") });
@@ -39,6 +55,8 @@ class JobController {
 
       const jobData: any = {
         title,
+        department,
+        employmentType,
         description,
         skills,
         experience: expNum,
@@ -183,6 +201,12 @@ class JobController {
       delete (updateData as { recruiterId?: unknown }).recruiterId;
       if (updateData.title && typeof updateData.title !== "string") {
         return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("title") });
+      }
+      if (updateData.department !== undefined && typeof updateData.department !== "string") {
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("department") });
+      }
+      if (updateData.employmentType !== undefined && typeof updateData.employmentType !== "string") {
+        return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("employment type") });
       }
       if (updateData.skills && (!Array.isArray(updateData.skills) || updateData.skills.length === 0)) {
         return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_FIELD("skills") });

@@ -18,6 +18,10 @@ const parseCorsOrigins = (): string[] | undefined => {
   return origins.length > 0 ? origins : undefined;
 };
 
+const parseBoolean = (value: string | undefined): boolean => {
+  return String(value).trim().toLowerCase() === "true";
+};
+
 const config = {
   // Server
   port: Number(process.env.PORT),
@@ -47,7 +51,7 @@ const config = {
     smtpPort: Number(process.env.EMAIL_PORT),
     smtpUser: requireEnv("EMAIL_USER"),
     smtpPass: requireEnv("EMAIL_PASSWORD"),
-    smtpSecure: requireEnv("SMTP_SECURE"),
+    smtpSecure: parseBoolean(requireEnv("SMTP_SECURE")),
   },
 
 } as const;

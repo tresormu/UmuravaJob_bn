@@ -4,6 +4,8 @@ import type { HydratedDocument, Model } from "mongoose";
 // Interface (TypeScript)
 export interface JobAttrs {
   title: string;
+  department?: string;
+  employmentType?: string;
   description?: string;
   skills: string[];
   experience: number;
@@ -24,6 +26,18 @@ const JobSchema: Schema = new Schema<JobAttrs>(
     title: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    department: {
+      type: String,
+      default: "General",
+      trim: true,
+    },
+
+    employmentType: {
+      type: String,
+      default: "Full-time",
       trim: true,
     },
 
