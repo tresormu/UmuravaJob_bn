@@ -6,6 +6,8 @@ import { PDFParse } from "pdf-parse";
 import Applicant from "../Models/Applicant.model.js";
 import Application from "../Models/Application.model.js";
 import Job from "../Models/Job.model.js";
+import Question from "../Models/Question.model.js";
+import Answer from "../Models/Answer.model.js";
 import { ResponseMessages } from "../utils/responseMessages.js";
 import type { AuthRequest } from "../types/type.js";
 
@@ -437,6 +439,9 @@ class ApplicantScreeningController {
 			const finalJobId = new Types.ObjectId(jobId);
 			const finalRecruiterId = new Types.ObjectId(recruiterId);
 
+			// Fetch questions for this job to match spreadsheet headers
+			const jobQuestions = await Question.find({ jobId: finalJobId });
+
 			// Helper to find column regardless of case
 			const getVal = (row: any, ...keys: string[]) => {
 				for (const key of keys) {
@@ -475,15 +480,29 @@ class ApplicantScreeningController {
 					const createdApplications: any = await (Application as any).create([
 						{
 							jobId: finalJobId,
-							candidateId: undefined,
 							recruiterId: finalRecruiterId,
 							status: "applied",
-							source: "manual",
+							candidateId: savedApplicant._id,
+							source: "excel",
 						}
 					]);
 					const application: any = createdApplications[0];
 					if (application) {
 						await Applicant.findByIdAndUpdate(savedApplicant._id, { applicationId: application._id });
+						
+						// Import answers for job questions
+						for (const question of jobQuestions) {
+							const answerValue = getVal(row, question.prompt);
+							if (answerValue !== undefined && answerValue !== "") {
+								await Answer.create({
+									applicationId: application._id,
+									questionId: question._id,
+									value: answerValue,
+									valueText: String(answerValue)
+								});
+							}
+						}
+						
 						applicants.push(savedApplicant);
 					}
 				}

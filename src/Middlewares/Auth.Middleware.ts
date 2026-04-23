@@ -34,3 +34,29 @@ export const protect = (req: AuthRequest, res: Response, next: NextFunction) => 
     res.status(401).json({ error: ResponseMessages.ERROR.INVALID_TOKEN });
   }
 };
+
+export const optionalProtect = (req: AuthRequest, _res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next();
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const jwtSecret = config.jwtSecret as string;
+    if (!token) return next();
+    
+    const decoded = jwt.verify(token, jwtSecret) as any;
+
+    req.user = {
+      email: decoded.email,
+      id: decoded.id,
+      role: decoded.role,
+    };
+  } catch (error) {
+    // Ignore error for optional protect
+  }
+  next();
+};

@@ -75,15 +75,17 @@ class RecruiterChatController {
         answersByAppId.set(appId, existing);
       }
 
-      const candidateContext = applicants.map((app) => ({
+      // Prune candidates to top 15 to avoid massive token counts and 429 errors
+      const candidateContext = applicants.slice(0, 15).map((app) => ({
         name: app.fullName,
         email: app.email,
         score: app.aiScore,
-        ai_summary: app.aiSummary,
-        skills: app.parsedData?.skills ?? [],
+        // Drastically truncate summary for general chat context
+        ai_summary: app.aiSummary ? app.aiSummary.substring(0, 200) + "..." : undefined,
+        skills: (app.parsedData?.skills ?? []).slice(0, 3),
         experience: app.parsedData?.experienceYears ?? 0,
-        resume_snippet: app.resumeText?.substring(0, 500) + "...", // Snippet for context balance
-        answers: app.applicationId ? (answersByAppId.get(String(app.applicationId)) || []) : [],
+        // Only include answers if no summary exists, to save space
+        answers: (!app.aiSummary && app.applicationId) ? (answersByAppId.get(String(app.applicationId)) || []).slice(0, 2) : [],
       }));
 
       const systemContext = `You are the Umurava AI Recruitment Assistant. Your ONLY purpose is to assist recruiters with their job listings, applicant evaluations, and recruitment strategy.
@@ -109,10 +111,7 @@ INSTRUCTIONS:
 4. Use the AI scores and summaries provided as a baseline for your analysis.
 5. If the recruiter asks for "Top 10" or similar, refer to the scores you've calculated.
 6. Be professional, insightful, and helpful.
-7. Since email and phone are provided, you can reference them if asked for contact details.
-
-Answer the recruiter's message based on this context.`;
-
+7. Since email and phone are provided, you can reference them if asked for contact details.`;
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -120,25 +119,23 @@ Answer the recruiter's message based on this context.`;
         return;
       }
 
-      const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
+      // Switching to 1.5-flash for better stability and rate limits
+      const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
       const apiVersion = "v1beta";
 
       const chatHistory: ChatMessage[] = history || [];
 
-      // We prepend the system context as a dummy user/model turn if the history is empty, 
-      // or we can use a system instruction if the API version supports it.
-      // For simplicity with the REST API:
-      const contents = [
-        { role: "user", parts: [{ text: systemContext + "\n\nRecruiter: Hello, can you help me with this job?" }] },
-        { role: "model", parts: [{ text: "Of course! I have access to all job details and applicant data. How can I assist you today?" }] },
-        ...chatHistory,
-        { role: "user", parts: [{ text: message }] }
-      ];
-
+      // Using system_instruction for better adherence to focus
       const response = await axios.post(
         `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${apiKey}`,
         {
-          contents,
+          contents: [
+            ...chatHistory,
+            { role: "user", parts: [{ text: message }] }
+          ],
+          system_instruction: {
+            parts: [{ text: systemContext }]
+          },
           generationConfig: { temperature: 0.7 },
         }
       );

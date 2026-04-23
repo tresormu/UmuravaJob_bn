@@ -13,7 +13,7 @@ router.post("/auth/resend-verification", RecruiterController.resendVerificationC
 
 // CRUD Routes for Recruiters
 router.get("/", RecruiterController.getRecruiter);
-router.get("/:id", protect, RecruiterController.getRecruiterById);
+router.get("/:id", RecruiterController.getRecruiterById);
 router.post("/", RecruiterController.createRecruiter);
 router.patch("/:id", protect, RecruiterController.updateRecruiter);
 router.delete("/:id", protect, RecruiterController.deleteRecruiter);

@@ -98,9 +98,16 @@ class JobController {
     try {
       const page = Number.parseInt(String(_req.query.page ?? 1), 10) || 1;
       const limit = Number.parseInt(String(_req.query.limit ?? 20), 10) || 20;
+      const recruiterId = _req.query.recruiterId as string;
 
-      const total = await Job.countDocuments();
+      const filter: any = {};
+      if (recruiterId && Types.ObjectId.isValid(recruiterId)) {
+        filter.recruiterId = new Types.ObjectId(recruiterId);
+      }
+
+      const total = await Job.countDocuments(filter);
       const jobs = await Job.aggregate([
+        { $match: filter },
         { $sort: { createdAt: -1 } },
         { $skip: (page - 1) * limit },
         { $limit: limit },

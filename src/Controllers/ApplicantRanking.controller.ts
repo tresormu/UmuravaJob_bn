@@ -77,6 +77,7 @@ const rankApplicantsWithGemini = async (
   jobData: Record<string, unknown>,
   applicantsData: Array<Record<string, unknown>>,
   hasQuestions: boolean,
+  userPrompt?: string,
 ): Promise<RankedCandidatesResponse> => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -93,6 +94,7 @@ Task:
 1. Score each candidate (0-100) based on how well they match the job requirements.
 2. Provide a detailed reasoning/explanation for the score, highlighting strengths and missing qualifications.
 ${hasQuestions ? "3. Pay special attention to the answers provided to the job-specific questions." : "3. Note: No additional application questions were asked for this role."}
+${userPrompt ? `4. IMPORTANT USER INSTRUCTION: ${userPrompt}` : ""}
 
 Return output in JSON format with this exact structure:
 {
@@ -111,6 +113,7 @@ Scoring criteria:
 - Relevant Experience: 30 points
 - Education: 10 points
 - Quality of Answers: 10 points
+${userPrompt ? `- Custom Recruiter Instruction Impact: High priority` : ""}
 
 Job:
 ${JSON.stringify(jobData, null, 2)}
@@ -174,6 +177,7 @@ class ApplicantRankingController {
   static async rankApplicantsForJob(req: Request, res: Response): Promise<void> {
     try {
       const jobId = typeof req.query.jobId === "string" ? req.query.jobId : undefined;
+      const prompt = typeof req.query.prompt === "string" ? req.query.prompt : undefined;
       const topN = typeof req.query.topN === "string" ? parseInt(req.query.topN, 10) : 10;
       const batchSize = 20;
 
@@ -250,7 +254,12 @@ class ApplicantRankingController {
           };
         });
 
-        const batchRanking = await rankApplicantsWithGemini(jobPayload, candidatesPayload, questions.length > 0);
+        const batchRanking = await rankApplicantsWithGemini(
+          jobPayload,
+          candidatesPayload,
+          questions.length > 0,
+          prompt
+        );
         results.push(...batchRanking.ranked_candidates);
       }
 

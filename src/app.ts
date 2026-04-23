@@ -32,8 +32,8 @@ app.use(
 );
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Increased for testing and general use
+  windowMs: 15 * 60 * 1000,
+  max: 500,
   message: { 
     success: false,
     message: "I'm sorry, but we've received too many requests from your connection. Please wait a few minutes before trying again." 
@@ -42,18 +42,30 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: {
+    success: false,
+    message: "Too many token refresh attempts. Please wait a few minutes before trying again."
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path !== "/auth/refresh",
+});
+
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: ".swagger-ui .topbar { display: none }",
   customSiteTitle: "Product API Docs",
 }));
 
-app.use("/api/applicants", authLimiter, ApplicantsRoutes);
-app.use("/api/recruiters", authLimiter, RecruitersRoutes);
-app.use("/api/jobs", authLimiter, Jobrouter);
-app.use("/api", authLimiter, QuestionRoutes);
-app.use("/api", authLimiter, ApplicationRoutes);
-app.use("/api/notifications", authLimiter, NotificationRoutes);
-app.use("/api/recruiter/chat", authLimiter, RecruiterChatRoutes);
+app.use("/api/applicants", ApplicantsRoutes);
+app.use("/api/recruiters", RecruitersRoutes);
+app.use("/api/jobs", Jobrouter);
+app.use("/api", QuestionRoutes);
+app.use("/api", ApplicationRoutes);
+app.use("/api/notifications", NotificationRoutes);
+app.use("/api/recruiter/chat", RecruiterChatRoutes);
 
 
 app.use((req, res) => {

@@ -260,7 +260,7 @@ class ApplicantsController {
       });
     } catch (error) {
       console.error("CreateApplicant error:", error);
-      throw error;
+      res.status(500).json({ message: "I'm sorry, we couldn't create the applicant profile at this time." });
     }
   }
 

@@ -80,4 +80,6 @@ const JobSchema: Schema = new Schema<JobAttrs>(
 );
 
 // Model
+JobSchema.index({ recruiterId: 1 });
+
 export default mongoose.model<JobAttrs, JobModel>("Job", JobSchema);
