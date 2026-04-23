@@ -11,8 +11,14 @@ const upload = multer({
 	storage: multer.memoryStorage(),
 	limits: { fileSize: 10 * 1024 * 1024 },
 	fileFilter: (_req, file, cb) => {
-		if (file.mimetype !== "application/pdf") {
-			cb(new Error("Only PDF files are allowed"));
+		const allowed = [
+			"application/pdf",
+			"text/csv",
+			"application/vnd.ms-excel",
+			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		];
+		if (!allowed.includes(file.mimetype)) {
+			cb(new Error("Only PDF, CSV, and Excel files are allowed"));
 			return;
 		}
 		cb(null, true);
@@ -39,6 +45,14 @@ router.get(
 	authorizeRoles("recruiter"),
 	(req, res) => ApplicantRankingController.rankApplicantsForJob(req, res),
 );
+router.post(
+	"/applicant-screening/spreadsheet",
+	protect,
+	authorizeRoles("recruiter"),
+	upload.single("file"),
+	(req, res) => ApplicantScreeningController.parseApplicantScreeningSpreadsheet(req, res),
+);
+router.patch("/bulk-update", protect, authorizeRoles("recruiter"), (req, res) => ApplicantsController.BulkUpdateApplicants(req, res));
 router.patch("/:id", protect, authorizeRoles("recruiter"), (req, res) => ApplicantsController.UpdateApplicant(req, res));
 router.delete("/:id", protect, authorizeRoles("recruiter"), (req, res) => ApplicantsController.DeleteApplicant(req, res));
 

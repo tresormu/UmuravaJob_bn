@@ -1,5 +1,5 @@
 import type { Response } from "express";
-import Applicant from "../Models/Applicant.model.js";
+import Applicant, { type ApplicantStatus } from "../Models/Applicant.model.js";
 import Candidate from "../Models/Candidate.model.js";
 import Application from "../Models/Application.model.js";
 import Job from "../Models/Job.model.js";
@@ -40,7 +40,7 @@ class ApplicantsController {
       const query: Record<string, unknown> = {
         recruiterId: userId,
       };
-      if (jobId) query.jobId = jobId;
+      if (jobId) query.jobId = new Types.ObjectId(jobId);
 
       const page = Number.parseInt(String(req.query.page ?? 1), 10) || 1;
       const limit = Number.parseInt(String(req.query.limit ?? 20), 10) || 20;
@@ -254,9 +254,9 @@ class ApplicantsController {
         // session.endSession();
       }
 
-      res.status(201).json({ 
+      res.status(201).json({
         message: ResponseMessages.SUCCESS.CREATED("applicant profile"),
-        applicant 
+        applicant
       });
     } catch (error) {
       console.error("CreateApplicant error:", error);
@@ -354,12 +354,77 @@ class ApplicantsController {
         }
       }
 
-      res.status(200).json({ 
+      res.status(200).json({
         message: ResponseMessages.SUCCESS.UPDATED("applicant profile"),
-        applicant: updatedApplicant 
+        applicant: updatedApplicant
       });
     } catch (error) {
       res.status(500).json({ message: "I'm sorry, we couldn't update the applicant's profile at this time." });
+    }
+  }
+
+  static async BulkUpdateApplicants(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
+        return;
+      }
+      const userId = req.user.id;
+      const { ids, status } = req.body as { ids: string[]; status: ApplicantStatus };
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ message: "Please select at least one applicant to update." });
+        return;
+      }
+
+      if (!status || !["applied", "screened", "shortlisted", "rejected"].includes(status)) {
+        res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("status") });
+        return;
+      }
+
+      // Verify ownership of all applicants
+      const applicants = await Applicant.find({
+        _id: { $in: ids },
+        recruiterId: userId,
+      });
+
+      if (applicants.length !== ids.length) {
+        res.status(403).json({ message: "One or more selected applicants were not found or you do not have permission to modify them." });
+        return;
+      }
+
+      const applicantIds = applicants.map(a => a._id);
+      const applicationIds = applicants
+        .map(a => a.applicationId)
+        .filter((id): id is Types.ObjectId => id !== undefined);
+
+      // Perform bulk updates
+      await Promise.all([
+        Applicant.updateMany({ _id: { $in: applicantIds as any } }, { $set: { status } }),
+        Application.updateMany({ _id: { $in: applicationIds as any } }, { $set: { status } }),
+      ]);
+
+      // If status is shortlisted, send emails
+      if (status === "shortlisted") {
+        for (const applicant of applicants) {
+          if (applicant.email) {
+            const job = await Job.findById(applicant.jobId);
+            if (job) {
+              sendShortlistedEmail(applicant.email, job.title, applicant.fullName).catch(err => {
+                console.error(`Failed to send bulk shortlisted email to ${applicant.email}:`, err);
+              });
+            }
+          }
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: `Successfully updated ${ids.length} applicant(s) to ${status}.`,
+      });
+    } catch (error) {
+      console.error("BulkUpdateApplicants error:", error);
+      res.status(500).json({ message: "We encountered a problem while updating the applicants in bulk." });
     }
   }
 

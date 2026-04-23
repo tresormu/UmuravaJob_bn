@@ -120,11 +120,11 @@ Answer the recruiter's message based on this context.`;
         return;
       }
 
-      const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+      const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
       const apiVersion = "v1beta";
 
       const chatHistory: ChatMessage[] = history || [];
-      
+
       // We prepend the system context as a dummy user/model turn if the history is empty, 
       // or we can use a system instruction if the API version supports it.
       // For simplicity with the REST API:

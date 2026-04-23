@@ -27,7 +27,7 @@ const GEMINI_MODELS_TO_TRY = [
   process.env.GEMINI_MODEL,
   "gemini-2.0-flash",
   "gemini-1.5-flash-latest",
-  "gemini-1.5-flash",
+  "gemini-1.5-flash-latest",
 ].filter((value, index, arr): value is string => {
   if (!value) return false;
   return arr.indexOf(value) === index;

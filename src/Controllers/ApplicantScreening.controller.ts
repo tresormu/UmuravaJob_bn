@@ -1,8 +1,11 @@
 import type { Request, Response } from "express";
 import axios from "axios";
+import * as xlsx from "xlsx";
 import { Types } from "mongoose";
 import { PDFParse } from "pdf-parse";
 import Applicant from "../Models/Applicant.model.js";
+import Application from "../Models/Application.model.js";
+import Job from "../Models/Job.model.js";
 import { ResponseMessages } from "../utils/responseMessages.js";
 import type { AuthRequest } from "../types/type.js";
 
@@ -159,23 +162,6 @@ const APPLICANT_SCREENING_SCHEMA_EXAMPLE: ApplicantScreeningProfile = {
 	},
 };
 
-const GEMINI_MODELS_TO_TRY = [
-	process.env.GEMINI_MODEL,
-	"gemini-2.0-flash",
-	"gemini-1.5-flash-latest",
-	"gemini-1.5-flash",
-].filter((value, index, arr): value is string => {
-	if (!value) return false;
-	return arr.indexOf(value) === index;
-});
-
-const GEMINI_API_VERSIONS = ["v1beta", "v1"] as const;
-
-interface GeminiModelInfo {
-	name?: string;
-	supportedGenerationMethods?: string[];
-}
-
 const extractJsonFromGeminiText = (raw: string): string => {
 	const cleaned = raw.trim();
 	const codeFenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -183,37 +169,6 @@ const extractJsonFromGeminiText = (raw: string): string => {
 		return codeFenceMatch[1].trim();
 	}
 	return cleaned;
-};
-
-const normalizeModelName = (value: string): string => {
-	return value.replace(/^models\//, "");
-};
-
-const listGeminiModelsForVersion = async (
-	apiVersion: (typeof GEMINI_API_VERSIONS)[number],
-	apiKey: string,
-): Promise<string[]> => {
-	try {
-		const response = await axios.get(
-			`https://generativelanguage.googleapis.com/${apiVersion}/models?key=${apiKey}`,
-		);
-
-		const models = (response.data?.models ?? []) as GeminiModelInfo[];
-		const candidates = models
-			.filter((model) => {
-				const modelName = model.name ?? "";
-				const supportsGenerate = model.supportedGenerationMethods?.includes(
-					"generateContent",
-				);
-				return Boolean(supportsGenerate) || modelName.includes("gemini");
-			})
-			.map((model) => normalizeModelName(model.name ?? ""))
-			.filter(Boolean);
-
-		return [...new Set(candidates)];
-	} catch {
-		return [];
-	}
 };
 
 const extractApplicantProfileWithGemini = async (
@@ -224,57 +179,52 @@ const extractApplicantProfileWithGemini = async (
 		throw new Error("GEMINI_API_KEY is required for applicant screening");
 	}
 
+	const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
+	const apiVersion = "v1beta";
+
+	console.log(`[AI-Screening] Triggering Gemini extraction: model=${modelName}, version=${apiVersion}`);
+
 	const prompt = `You are an applicant screening assistant.\n\nExtract the candidate profile from the resume text and return ONLY valid JSON with this exact shape and keys:\n{\n  "personaInfo": {\n    "firstName": "",\n    "lastName": "",\n    "email": "",\n    "headline": "",\n    "location": ""\n  },\n  "skills": [{ "name": "", "level": "Beginner|Intermediate|Advanced|Expert", "yearsOfExperience": 0 }],\n  "languages": [{ "name": "", "proficiency": "Basic|Conversational|Fluent|Native" }],\n  "workExperience": [{ "company": "", "role": "", "startDate": "YYYY-MM", "endDate": "YYYY-MM|Present", "description": "", "technologies": [""], "isCurrent": false }],\n  "education": [{ "institution": "", "degree": "", "fieldOfStudy": "", "startYear": 0, "endYear": 0 }],\n  "certifications": [{ "name": "", "issuer": "", "issueDate": "YYYY-MM" }],\n  "projects": [{ "name": "", "description": "", "technologies": [""], "role": "", "link": "", "startDate": "YYYY-MM", "endDate": "YYYY-MM" }],\n  "socialLinks": { "linkedin": "", "github": "", "portfolio": "" },\n  "availability": { "status": "Available|Open to Opportunities|Not Available", "type": "Full-time|Part-time|Contract", "startDate": "YYYY-MM-DD" }\n}\n\nRules:\n- Use empty string for unknown scalar fields and empty array for unknown lists.\n- Keep enums strictly within allowed values.\n- Do not include markdown or explanations.\n\nResume text:\n${resumeText}`;
 
-	let lastErrorMessage = "Gemini request failed";
+	try {
+		const response = await axios.post(
+			`https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${apiKey}`,
+			{
+				contents: [{ parts: [{ text: prompt }] }],
+				generationConfig: {
+					temperature: 0.1,
+				},
+			},
+			{
+				timeout: 40000, // 40 seconds timeout
+			},
+		);
 
-	for (const apiVersion of GEMINI_API_VERSIONS) {
-		const discoveredModels = await listGeminiModelsForVersion(apiVersion, apiKey);
-		const modelsForVersion = [...new Set([...GEMINI_MODELS_TO_TRY, ...discoveredModels])];
+		const rawText =
+			response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+		if (!rawText) {
+			console.error("[AI-Screening] Empty response from Gemini");
+			throw new Error("Gemini returned an empty response");
+		}
 
-		for (const modelName of modelsForVersion) {
-			try {
-				const response = await axios.post(
-					`https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${apiKey}`,
-					{
-						contents: [{ parts: [{ text: prompt }] }],
-						generationConfig: {
-							temperature: 0.1,
-						},
-					},
-				);
-
-				const rawText =
-					response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-				if (!rawText) {
-					throw new Error("Gemini returned an empty response");
-				}
-
-				const jsonText = extractJsonFromGeminiText(String(rawText));
-				const parsed = JSON.parse(jsonText) as ApplicantScreeningProfile;
-				return parsed;
-			} catch (error) {
-				if (axios.isAxiosError(error)) {
-					const statusCode = error.response?.status;
-					const upstreamMessage =
-						typeof error.response?.data === "string"
-							? error.response.data
-							: JSON.stringify(error.response?.data ?? {});
-					lastErrorMessage = `Gemini ${apiVersion}/${modelName} failed with status ${statusCode ?? "unknown"}: ${upstreamMessage}`;
-
-					if (statusCode === 404) {
-						continue;
-					}
-				} else {
-					lastErrorMessage = error instanceof Error ? error.message : "Unknown Gemini error";
-				}
-			}
+		console.log("[AI-Screening] Successfully extracted profile from Gemini");
+		const jsonText = extractJsonFromGeminiText(String(rawText));
+		const parsed = JSON.parse(jsonText) as ApplicantScreeningProfile;
+		return parsed;
+	} catch (error) {
+		if (axios.isAxiosError(error)) {
+			const statusCode = error.response?.status;
+			const upstreamMessage =
+				typeof error.response?.data === "string"
+					? error.response.data
+					: JSON.stringify(error.response?.data ?? {});
+			console.error(`[AI-Screening] Gemini call failed (${statusCode}):`, upstreamMessage);
+			throw new Error(`Gemini Error: ${upstreamMessage}`);
+		} else {
+			console.error("[AI-Screening] Processing error:", error);
+			throw error instanceof Error ? error : new Error("Unknown error in AI screening");
 		}
 	}
-
-	throw new Error(
-		`${lastErrorMessage}. Check GEMINI_API_KEY and optionally set GEMINI_MODEL in .env`,
-	);
 };
 
 const normalizeOptionalString = (value: unknown): string | undefined => {
@@ -306,15 +256,22 @@ class ApplicantScreeningController {
 		const finalJobId = new Types.ObjectId(jobId);
 		const finalRecruiterId = new Types.ObjectId(recruiterId);
 
-		const parser = new PDFParse({ data: file.buffer });
+		console.log(`[Screening] STEP 1: Initializing Parser - ${file.originalname}`);
+		const uint8Array = new Uint8Array(file.buffer.buffer, file.buffer.byteOffset, file.buffer.byteLength);
+		const parser = new PDFParse({ data: uint8Array });
+
+		console.log(`[Screening] STEP 2: Extracting Text - ${file.originalname}`);
 		const parsed = await parser.getText();
 		await parser.destroy();
 
 		const extractedText = parsed.text?.trim() ?? "";
 		if (!extractedText) {
-			throw new Error("No readable text found in PDF");
+			console.error(`[Screening] FAILED: No text found in ${file.originalname}`);
+			throw new Error("No readable text found in PDF. Is this document a secure or scanned image?");
 		}
+		console.log(`[Screening] STEP 3: Text Extracted (${extractedText.length} chars) - ${file.originalname}`);
 
+		console.log(`[Screening] Text extracted (${extractedText.length} chars). Sending to AI...`);
 		const applicantProfile = await extractApplicantProfileWithGemini(extractedText);
 
 		const applicantDoc = await new Applicant({
@@ -344,7 +301,7 @@ class ApplicantScreeningController {
 		return {
 			applicantId: applicantDoc._id,
 			fileName: file.originalname,
-			pages: parsed.pages?.length ?? 0,
+			pages: parsed.pages.length,
 			extractedText,
 			applicantProfile,
 			savedApplicant,
@@ -389,24 +346,38 @@ class ApplicantScreeningController {
 				return;
 			}
 
+			console.log(`[Screening] Received ${files.length} resumes for batch processing.`);
+
+			// Process all files in parallel to reduce total latency
+			const results = await Promise.allSettled(
+				files.map((file) => ApplicantScreeningController.processSingleCv(file, jobId, recruiterId))
+			);
+
 			const processed: any[] = [];
 			const failed: Array<{ fileName: string; error: string }> = [];
 
-			for (const file of files) {
-				try {
-					const result = await ApplicantScreeningController.processSingleCv(file, jobId, recruiterId);
-					processed.push(result);
-				} catch (error) {
+			results.forEach((result, index) => {
+				const file = files[index];
+				const fileName = file ? file.originalname : `file-${index}`;
+
+				if (result.status === "fulfilled") {
+					processed.push(result.value);
+				} else {
+					console.error(`[Screening] Failed to process ${fileName}:`, result.reason);
 					failed.push({
-						fileName: file.originalname,
-						error: error instanceof Error ? error.message : "Unknown error",
+						fileName,
+						error: result.reason instanceof Error ? result.reason.message : "Processing failed",
 					});
 				}
-			}
+			});
 
 			if (processed.length === 0) {
+				const firstError = failed.length > 0 ? failed[0]?.error : "Unknown processing error";
+				console.error(`[Screening] Batch failed. First error: ${firstError}`);
+
 				res.status(422).json({
-					message: "We're sorry, but none of the uploaded CVs could be processed. Please check the file format and try again.",
+					success: false,
+					message: `None of the uploaded CVs could be processed. Error: ${firstError}`,
 					failed,
 				});
 				return;
@@ -422,8 +393,113 @@ class ApplicantScreeningController {
 				failed,
 			});
 		} catch (error) {
+			console.error("[Screening] Critical error in batch processing:", error);
 			res.status(500).json({
 				message: "I'm sorry, we encountered a problem while completing the applicant screening process.",
+				error: error instanceof Error ? error.message : "Unknown error",
+			});
+		}
+	}
+
+	static async parseApplicantScreeningSpreadsheet(req: Request, res: Response): Promise<void> {
+		try {
+			const jobId = req.query.jobId as string;
+			const recruiterId = (req as any).user?.id;
+			if (recruiterId === undefined) {
+				res.status(401).json({ message: "Unauthorized. Recruiter ID not found." });
+				return;
+			}
+
+			if (!jobId || !Types.ObjectId.isValid(jobId)) {
+				res.status(400).json({ message: "Valid Job ID is required for spreadsheet import." });
+				return;
+			}
+
+			const file = req.file;
+			if (!file) {
+				res.status(400).json({ message: "Please upload a spreadsheet file (.csv or .xlsx)." });
+				return;
+			}
+
+			console.log(`[Spreadsheet] Starting import for ${file.originalname}`);
+
+			const workbook = xlsx.read(file.buffer, { type: "buffer" });
+			const sheetName = workbook.SheetNames[0];
+			const worksheet = workbook.Sheets[sheetName!];
+			const data = xlsx.utils.sheet_to_json(worksheet!);
+
+			if (data.length === 0) {
+				res.status(400).json({ message: "The uploaded spreadsheet is empty." });
+				return;
+			}
+
+			const applicants: any[] = [];
+			const finalJobId = new Types.ObjectId(jobId);
+			const finalRecruiterId = new Types.ObjectId(recruiterId);
+
+			// Helper to find column regardless of case
+			const getVal = (row: any, ...keys: string[]) => {
+				for (const key of keys) {
+					const foundKey = Object.keys(row).find(k => k.toLowerCase().replace(/[\s_]/g, '') === key.toLowerCase().replace(/[\s_]/g, ''));
+					if (foundKey) return row[foundKey];
+				}
+				return "";
+			};
+
+			for (const row of data as any[]) {
+				const fullName = getVal(row, "FullName", "Name", "CandidateName", "Candidate");
+				const email = getVal(row, "Email", "EmailAddress", "Mail");
+				if (!fullName) continue;
+
+				const applicantData = {
+					jobId: finalJobId,
+					recruiterId: finalRecruiterId,
+					fullName,
+					email: email?.toLowerCase(),
+					phone: getVal(row, "Phone", "PhoneNumber", "Mobile", "Tel"),
+					location: getVal(row, "Location", "Address", "City"),
+					status: "applied",
+					source: "csv",
+					isParsed: true,
+					parsedAt: new Date(),
+					parsedData: {
+						skills: (getVal(row, "Skills", "Expertise", "Technologies") as string)?.split(',').map((s: string) => s.trim()).filter(Boolean) || [],
+						experienceYears: parseInt(getVal(row, "Experience", "Years", "Exp") as string) || 0
+					}
+				};
+
+				// create applicant and application records
+				const savedApplicants: any = await (Applicant as any).create([applicantData]);
+				const savedApplicant: any = savedApplicants[0];
+				if (savedApplicant) {
+					const createdApplications: any = await (Application as any).create([
+						{
+							jobId: finalJobId,
+							candidateId: undefined,
+							recruiterId: finalRecruiterId,
+							status: "applied",
+							source: "manual",
+						}
+					]);
+					const application: any = createdApplications[0];
+					if (application) {
+						await Applicant.findByIdAndUpdate(savedApplicant._id, { applicationId: application._id });
+						applicants.push(savedApplicant);
+					}
+				}
+			}
+
+			res.status(200).json({
+				success: true,
+				message: `Successfully imported ${applicants.length} applicant(s) from ${file.originalname}.`,
+				count: applicants.length,
+				results: applicants
+			});
+
+		} catch (error) {
+			console.error("[Spreadsheet] Error:", error);
+			res.status(500).json({
+				message: "We encountered a problem while processing the spreadsheet.",
 				error: error instanceof Error ? error.message : "Unknown error",
 			});
 		}
