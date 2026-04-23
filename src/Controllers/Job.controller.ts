@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { Types } from "mongoose";
 import Job from "../Models/Job.model.js";
+import Applicant from "../Models/Applicant.model.js";
 import type { AuthRequest } from "../types/type.js";
 import { sendJobPostedEmail } from "../utils/email.js";
 import { ResponseMessages } from "../utils/responseMessages.js";
@@ -98,12 +99,45 @@ class JobController {
       const page = Number.parseInt(String(_req.query.page ?? 1), 10) || 1;
       const limit = Number.parseInt(String(_req.query.limit ?? 20), 10) || 20;
 
-      const [total, jobs] = await Promise.all([
-        Job.countDocuments(),
-        Job.find()
-          .sort({ createdAt: -1 })
-          .skip((page - 1) * limit)
-          .limit(limit),
+      const total = await Job.countDocuments();
+      const jobs = await Job.aggregate([
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: "applicants",
+            localField: "_id",
+            foreignField: "jobId",
+            as: "applicants",
+          },
+        },
+        {
+          $project: {
+            title: 1,
+            department: 1,
+            employmentType: 1,
+            description: 1,
+            skills: 1,
+            experience: 1,
+            education: 1,
+            location: 1,
+            recruiterId: 1,
+            deadline: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            applicantsCount: { $size: "$applicants" },
+            matchedCount: {
+              $size: {
+                $filter: {
+                  input: "$applicants",
+                  as: "applicant",
+                  cond: { $gte: ["$$applicant.aiScore", 80] },
+                },
+              },
+            },
+          },
+        },
       ]);
 
       return res.status(200).json({
@@ -134,7 +168,7 @@ class JobController {
         });
       }
 
-      const job = await Job.findById(id);
+      const job = await Job.findById(id).lean();
 
       if (!job) {
         return res.status(404).json({
@@ -143,9 +177,18 @@ class JobController {
         });
       }
 
+      const [applicantsCount, matchedCount] = await Promise.all([
+        Applicant.countDocuments({ jobId: id }),
+        Applicant.countDocuments({ jobId: id, aiScore: { $gte: 80 } }),
+      ]);
+
       return res.status(200).json({
         success: true,
-        data: job,
+        data: {
+          ...job,
+          applicantsCount,
+          matchedCount,
+        },
       });
     } catch (error) {
       return res.status(500).json({

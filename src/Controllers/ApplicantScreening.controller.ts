@@ -4,6 +4,7 @@ import { Types } from "mongoose";
 import { PDFParse } from "pdf-parse";
 import Applicant from "../Models/Applicant.model.js";
 import { ResponseMessages } from "../utils/responseMessages.js";
+import type { AuthRequest } from "../types/type.js";
 
 type SkillLevel = "Beginner" | "Intermediate" | "Advanced" | "Expert";
 type LanguageProficiency = "Basic" | "Conversational" | "Fluent" | "Native";
@@ -292,7 +293,8 @@ const buildApplicantFullName = (profile: ApplicantScreeningProfile): string => {
 class ApplicantScreeningController {
 	private static async processSingleCv(
 		file: Express.Multer.File,
-		jobId?: string | Types.ObjectId,
+		jobId: string | Types.ObjectId,
+		recruiterId: string | Types.ObjectId,
 	): Promise<{
 		applicantId: Types.ObjectId;
 		fileName: string;
@@ -301,8 +303,8 @@ class ApplicantScreeningController {
 		applicantProfile: ApplicantScreeningProfile;
 		savedApplicant: unknown;
 	}> {
-		const finalJobId = jobId ? new Types.ObjectId(jobId) : new Types.ObjectId();
-		const recruiterId = new Types.ObjectId();
+		const finalJobId = new Types.ObjectId(jobId);
+		const finalRecruiterId = new Types.ObjectId(recruiterId);
 
 		const parser = new PDFParse({ data: file.buffer });
 		const parsed = await parser.getText();
@@ -317,11 +319,12 @@ class ApplicantScreeningController {
 
 		const applicantDoc = await new Applicant({
 			jobId: finalJobId,
-			recruiterId,
+			recruiterId: finalRecruiterId,
 			fullName: buildApplicantFullName(applicantProfile),
 			email: normalizeOptionalString(applicantProfile.personaInfo.email),
 			location: normalizeOptionalString(applicantProfile.personaInfo.location),
 			resumeText: extractedText,
+			resumeFileName: file.originalname,
 			applicantProfile: applicantProfile as unknown as Record<string, unknown>,
 			linkedInUrl: normalizeOptionalString(applicantProfile.socialLinks.linkedin),
 			portfolioUrl: normalizeOptionalString(applicantProfile.socialLinks.portfolio),
@@ -335,18 +338,6 @@ class ApplicantScreeningController {
 				applicantProfile.availability.type,
 			].filter(Boolean),
 		}).save();
-
-		await Applicant.updateOne(
-			{ _id: applicantDoc._id },
-			{
-				$unset: {
-
-					recruiterId: 1,
-					resumeFileName: 1,
-					recruiterNotes: 1,
-				},
-			},
-		);
 
 		const savedApplicant = await Applicant.findById(applicantDoc._id).lean();
 
@@ -371,11 +362,22 @@ class ApplicantScreeningController {
 	}
 
 	static async parseApplicantScreeningPdf(
-		req: Request,
+		req: AuthRequest,
 		res: Response,
 	): Promise<void> {
 		try {
-			const jobId = (req.query.jobId as string) || undefined;
+			if (!req.user) {
+				res.status(401).json({ message: ResponseMessages.ERROR.UNAUTHORIZED });
+				return;
+			}
+
+			const recruiterId = req.user.id;
+			const jobId = req.query.jobId as string;
+
+			if (!jobId || !Types.ObjectId.isValid(jobId)) {
+				res.status(400).json({ message: ResponseMessages.ERROR.INVALID_FIELD("jobId") });
+				return;
+			}
 
 			const requestWithFiles = req as Request & {
 				files?: Express.Multer.File[] | undefined;
@@ -387,19 +389,12 @@ class ApplicantScreeningController {
 				return;
 			}
 
-			const processed: Array<{
-				applicantId: Types.ObjectId;
-				fileName: string;
-				pages: number;
-				extractedText: string;
-				applicantProfile: ApplicantScreeningProfile;
-				savedApplicant: unknown;
-			}> = [];
+			const processed: any[] = [];
 			const failed: Array<{ fileName: string; error: string }> = [];
 
 			for (const file of files) {
 				try {
-					const result = await ApplicantScreeningController.processSingleCv(file, jobId);
+					const result = await ApplicantScreeningController.processSingleCv(file, jobId, recruiterId);
 					processed.push(result);
 				} catch (error) {
 					failed.push({
@@ -418,7 +413,8 @@ class ApplicantScreeningController {
 			}
 
 			res.status(200).json({
-				message: "Great! The applicant data has been successfully extracted and saved.",
+				success: true,
+				message: `Great! ${processed.length} applicant(s) data has been successfully extracted and saved.`,
 				totalUploaded: files.length,
 				totalSaved: processed.length,
 				totalFailed: failed.length,

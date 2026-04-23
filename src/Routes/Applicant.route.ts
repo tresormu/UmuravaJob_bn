@@ -1,12 +1,12 @@
 import ApplicantsController from "../Controllers/Application.controller.js";
-import { Router } from "express";
+import express from "express";
 import multer from "multer";
 import { protect } from "../Middlewares/Auth.Middleware.js";
 import { authorizeRoles } from "../Middlewares/authorize.js";
-import ApplicantScreeningController from "../Controllers/Apllicants.controller.js";
+import ApplicantScreeningController from "../Controllers/ApplicantScreening.controller.js";
 import ApplicantRankingController from "../Controllers/ApplicantRanking.controller.js";
 
-const App = Router();
+const router = express.Router();
 const upload = multer({
 	storage: multer.memoryStorage(),
 	limits: { fileSize: 10 * 1024 * 1024 },
@@ -19,23 +19,27 @@ const upload = multer({
 	},
 });
 
-App.get("/", protect, authorizeRoles("recruiter"), ApplicantsController.GetApplicants);
-App.get("/:id", protect, authorizeRoles("recruiter"), ApplicantsController.GetApplicantById);
-App.post("/", protect, authorizeRoles("recruiter"), ApplicantsController.CreateApplicant);
-App.get(
+router.get("/", protect, authorizeRoles("recruiter"), (req, res) => ApplicantsController.GetApplicants(req, res));
+router.get("/:id", protect, authorizeRoles("recruiter"), (req, res) => ApplicantsController.GetApplicantById(req, res));
+router.post("/", protect, authorizeRoles("recruiter"), (req, res) => ApplicantsController.CreateApplicant(req, res));
+router.get(
 	"/applicant-screening/schema",
-	ApplicantScreeningController.getApplicantScreeningSchema,
+	(req, res) => ApplicantScreeningController.getApplicantScreeningSchema(req, res),
 );
-App.post(
+router.post(
 	"/applicant-screening/pdf",
+	protect,
+	authorizeRoles("recruiter"),
 	upload.array("files", 20),
-	ApplicantScreeningController.parseApplicantScreeningPdf,
+	(req, res) => ApplicantScreeningController.parseApplicantScreeningPdf(req, res),
 );
-App.get(
+router.get(
 	"/applicant-screening/rank",
-	ApplicantRankingController.rankApplicantsForJob,
+	protect,
+	authorizeRoles("recruiter"),
+	(req, res) => ApplicantRankingController.rankApplicantsForJob(req, res),
 );
-App.patch("/:id", protect, authorizeRoles("recruiter"), ApplicantsController.UpdateApplicant);
-App.delete("/:id", protect, authorizeRoles("recruiter"), ApplicantsController.DeleteApplicant);
+router.patch("/:id", protect, authorizeRoles("recruiter"), (req, res) => ApplicantsController.UpdateApplicant(req, res));
+router.delete("/:id", protect, authorizeRoles("recruiter"), (req, res) => ApplicantsController.DeleteApplicant(req, res));
 
-export default App;
+export default router;
