@@ -21,6 +21,8 @@ export interface RecruiterAttrs {
   emailVerificationExpires?: Date | undefined;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  deletionVerificationToken?: string | undefined;
+  deletionVerificationExpires?: Date | undefined;
   lastLoginAt?: Date;
   loginAttempts?: number;
   isLocked?: boolean;
@@ -68,6 +70,8 @@ const RecruiterSchema = new Schema<RecruiterAttrs>(
     emailVerificationExpires: { type: Date },
     passwordResetToken: { type: String },
     passwordResetExpires: { type: Date },
+    deletionVerificationToken: { type: String },
+    deletionVerificationExpires: { type: Date },
     lastLoginAt: { type: Date },
     loginAttempts: { type: Number, default: 0 },
     isLocked: { type: Boolean, default: false },

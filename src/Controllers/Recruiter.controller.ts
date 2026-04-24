@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../types/type.js";
 import crypto from "crypto";
-import { sendRecruiterDeletionEmail, sendVerificationEmail } from "../utils/email.js";
+import { sendRecruiterDeletionEmail, sendVerificationEmail, sendAccountDeletionVerificationEmail } from "../utils/email.js";
 import {
     GenerateToken,
     GenerateRefreshToken,
@@ -421,11 +421,29 @@ class RecruiterController {
             recruiter.isEmailVerified = true;
             recruiter.emailVerificationToken = undefined;
             recruiter.emailVerificationExpires = undefined;
+
+            const payload = {
+                id: recruiter.id,
+                role: recruiter.role,
+                email: recruiter.email,
+            };
+            const accessToken = GenerateToken(payload);
+            const refreshToken = GenerateRefreshToken(payload);
+
+            recruiter.refreshToken = refreshToken;
+            recruiter.lastLoginAt = new Date();
             await recruiter.save();
+
+            const recruiterSafe = recruiter.toObject();
+            delete recruiterSafe.password;
+            delete recruiterSafe.refreshToken;
 
             return res.status(200).json({
                 success: true,
                 message: ResponseMessages.SUCCESS.EMAIL_VERIFIED,
+                accessToken,
+                refreshToken,
+                recruiter: recruiterSafe,
             });
         } catch (error) {
             return res.status(500).json({
@@ -477,6 +495,86 @@ class RecruiterController {
             return res.status(500).json({
                 success: false,
                 message: "I'm sorry, we couldn't resend your verification code. Please try again.",
+                error: error instanceof Error ? error.message : error,
+            });
+        }
+    }
+    /**
+     * Request account deletion — sends a verification code to the recruiter's email
+     */
+    async requestDeleteAccount(req: AuthRequest, res: Response) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ success: false, message: "Not authenticated." });
+            }
+            const recruiter = await Recruiter.findById(req.user.id);
+            if (!recruiter) {
+                return res.status(404).json({ success: false, message: ResponseMessages.ERROR.NOT_FOUND("recruiter profile") });
+            }
+
+            const code = generateVerificationCode();
+            recruiter.deletionVerificationToken = hashToken(code);
+            recruiter.deletionVerificationExpires = new Date(Date.now() + 15 * 60 * 1000);
+            await recruiter.save();
+
+            await sendAccountDeletionVerificationEmail(recruiter.email, code, recruiter.firstName);
+
+            return res.status(200).json({
+                success: true,
+                message: "A verification code has been sent to your email. Enter it to confirm account deletion.",
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "We couldn't send the verification code. Please try again.",
+                error: error instanceof Error ? error.message : error,
+            });
+        }
+    }
+
+    /**
+     * Confirm account deletion with the verification code
+     */
+    async confirmDeleteAccount(req: AuthRequest, res: Response) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ success: false, message: "Not authenticated." });
+            }
+            const { code } = req.body as { code?: string };
+            if (!code) {
+                return res.status(400).json({ success: false, message: "Please provide the verification code." });
+            }
+
+            const recruiter = await Recruiter.findById(req.user.id);
+            if (!recruiter) {
+                return res.status(404).json({ success: false, message: ResponseMessages.ERROR.NOT_FOUND("recruiter profile") });
+            }
+            if (!recruiter.deletionVerificationToken || !recruiter.deletionVerificationExpires) {
+                return res.status(400).json({ success: false, message: "No deletion request found. Please request a new code." });
+            }
+            if (recruiter.deletionVerificationExpires.getTime() < Date.now()) {
+                return res.status(400).json({ success: false, message: ResponseMessages.ERROR.EXPIRED_CODE });
+            }
+            if (hashToken(code) !== recruiter.deletionVerificationToken) {
+                return res.status(400).json({ success: false, message: ResponseMessages.ERROR.INVALID_CODE });
+            }
+
+            await Recruiter.findByIdAndDelete(req.user.id);
+
+            try {
+                await sendRecruiterDeletionEmail(recruiter.email, recruiter.firstName);
+            } catch (emailError) {
+                console.error("Failed to send deletion confirmation email", emailError);
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "Your account has been permanently deleted.",
+            });
+        } catch (error) {
+            return res.status(500).json({
+                success: false,
+                message: "We couldn't delete your account. Please try again.",
                 error: error instanceof Error ? error.message : error,
             });
         }

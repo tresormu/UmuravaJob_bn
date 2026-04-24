@@ -218,3 +218,22 @@ export const sendRecruiterDeletionEmail = async (to: string, firstName?: string)
   });
   return sendEmail({ to, subject, html, text });
 };
+
+export const sendAccountDeletionVerificationEmail = async (to: string, code: string, firstName?: string) => {
+  const subject = "Confirm your account deletion";
+  const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
+  const { html, text } = renderEmail({
+    title: "Confirm account deletion",
+    preheader: "Use this code to confirm your account deletion request.",
+    bodyHtml: `
+      <p>${greeting}</p>
+      <p>We received a request to permanently delete your Umurava account.</p>
+      <p>Use the code below to confirm. This code expires in 15 minutes.</p>
+      <div style="font-size:22px;font-weight:700;letter-spacing:4px;margin:16px 0;color:#0f2b5b;">
+        ${code}
+      </div>
+      <p>If you did not request this, please ignore this email — your account is safe.</p>
+    `,
+  });
+  return sendEmail({ to, subject, html, text });
+};

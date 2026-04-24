@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import axios from "axios";
+import { callGemini } from "../utils/gemini.js";
 import { Types } from "mongoose";
 import Applicant from "../Models/Applicant.model.js";
 import Job from "../Models/Job.model.js";
@@ -18,25 +19,6 @@ interface RankedCandidatesResponse {
   ranked_candidates: RankedCandidate[];
 }
 
-interface GeminiModelInfo {
-  name?: string;
-  supportedGenerationMethods?: string[];
-}
-
-const GEMINI_MODELS_TO_TRY = [
-  process.env.GEMINI_MODEL,
-  "gemini-2.0-flash",
-  "gemini-1.5-flash-latest",
-  "gemini-1.5-flash-latest",
-].filter((value, index, arr): value is string => {
-  if (!value) return false;
-  return arr.indexOf(value) === index;
-});
-
-const GEMINI_API_VERSIONS = ["v1beta", "v1"] as const;
-
-const normalizeModelName = (value: string): string => value.replace(/^models\//, "");
-
 const extractJsonFromGeminiText = (raw: string): string => {
   const cleaned = raw.trim();
   const codeFenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -46,44 +28,12 @@ const extractJsonFromGeminiText = (raw: string): string => {
   return cleaned;
 };
 
-const listGeminiModelsForVersion = async (
-  apiVersion: (typeof GEMINI_API_VERSIONS)[number],
-  apiKey: string,
-): Promise<string[]> => {
-  try {
-    const response = await axios.get(
-      `https://generativelanguage.googleapis.com/${apiVersion}/models?key=${apiKey}`,
-    );
-
-    const models = (response.data?.models ?? []) as GeminiModelInfo[];
-    const candidates = models
-      .filter((model) => {
-        const modelName = model.name ?? "";
-        const supportsGenerate = model.supportedGenerationMethods?.includes(
-          "generateContent",
-        );
-        return Boolean(supportsGenerate) || modelName.includes("gemini");
-      })
-      .map((model) => normalizeModelName(model.name ?? ""))
-      .filter(Boolean);
-
-    return [...new Set(candidates)];
-  } catch {
-    return [];
-  }
-};
-
 const rankApplicantsWithGemini = async (
   jobData: Record<string, unknown>,
   applicantsData: Array<Record<string, unknown>>,
   hasQuestions: boolean,
   userPrompt?: string,
 ): Promise<RankedCandidatesResponse> => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is required for candidate ranking");
-  }
-
   const prompt = `You are an AI recruitment assistant.
 
 You will receive:
@@ -121,56 +71,23 @@ ${JSON.stringify(jobData, null, 2)}
 Candidates:
 ${JSON.stringify(applicantsData, null, 2)}`;
 
-  let lastErrorMessage = "Gemini request failed";
+  try {
+    const rawText = await callGemini({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1 },
+    });
 
-  for (const apiVersion of GEMINI_API_VERSIONS) {
-    const discoveredModels = await listGeminiModelsForVersion(apiVersion, apiKey);
-    const modelsForVersion = [...new Set([...GEMINI_MODELS_TO_TRY, ...discoveredModels])];
-
-    for (const modelName of modelsForVersion) {
-      try {
-        const response = await axios.post(
-          `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${apiKey}`,
-          {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1 },
-          },
-        );
-
-        const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-        if (!rawText) {
-          throw new Error("Gemini returned an empty response");
-        }
-
-        const jsonText = extractJsonFromGeminiText(String(rawText));
-        const parsed = JSON.parse(jsonText) as RankedCandidatesResponse;
-        if (!Array.isArray(parsed.ranked_candidates)) {
-          throw new Error("Gemini response missing ranked_candidates array");
-        }
-
-        return parsed;
-      } catch (error) {
-        if (axios.isAxiosError(error)) {
-          const statusCode = error.response?.status;
-          const upstreamMessage =
-            typeof error.response?.data === "string"
-              ? error.response.data
-              : JSON.stringify(error.response?.data ?? {});
-          lastErrorMessage = `Gemini ${apiVersion}/${modelName} failed with status ${statusCode ?? "unknown"}: ${upstreamMessage}`;
-
-          if (statusCode === 404) {
-            continue;
-          }
-        } else {
-          lastErrorMessage = error instanceof Error ? error.message : "Unknown Gemini error";
-        }
-      }
+    const jsonText = extractJsonFromGeminiText(String(rawText));
+    const parsed = JSON.parse(jsonText) as RankedCandidatesResponse;
+    if (!Array.isArray(parsed.ranked_candidates)) {
+      throw new Error("Gemini response missing ranked_candidates array");
     }
-  }
 
-  throw new Error(
-    `${lastErrorMessage}. Check GEMINI_API_KEY and optionally set GEMINI_MODEL in .env`,
-  );
+    return parsed;
+  } catch (error) {
+    console.error("[AI-Ranking] Gemini call failed:", error instanceof Error ? error.message : error);
+    throw new Error(error instanceof Error ? error.message : "Candidate ranking failed");
+  }
 };
 
 class ApplicantRankingController {

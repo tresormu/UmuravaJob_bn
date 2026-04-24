@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import { Types } from "mongoose";
 import axios from "axios";
+import { callGemini } from "../utils/gemini.js";
 import type { AuthRequest } from "../types/type.js";
 import Job from "../Models/Job.model.js";
 import Applicant from "../Models/Applicant.model.js";
@@ -88,30 +89,31 @@ class RecruiterChatController {
         answers: (!app.aiSummary && app.applicationId) ? (answersByAppId.get(String(app.applicationId)) || []).slice(0, 2) : [],
       }));
 
-      const systemContext = `You are the Umurava AI Recruitment Assistant. Your ONLY purpose is to assist recruiters with their job listings, applicant evaluations, and recruitment strategy.
+      const systemContext = `You are Umurava's AI recruitment assistant. You help recruiters hire better and faster.
 
-STRICT POLICY:
-- You must ONLY answer questions related to recruitment, job requirements, candidate comparisons, and hiring strategy.
-- If a user asks about any unrelated topic (e.g., health, food, general knowledge, sports, entertainment, etc.), you must politely decline and state: "I am sorry, but my expertise is strictly focused on recruitment and hiring processes. I cannot assist with other topics."
+OUTPUT RULES — follow these strictly, no exceptions:
+- Write plain conversational text only. No markdown. No asterisks (*). No slashes (/). No hashes (#). No bold. No headers.
+- Never show your thinking, planning, drafts, or reasoning. Just give the final answer.
+- Keep responses to 1-3 sentences unless the user explicitly asks for more detail.
+- Ask at most one follow-up question per response.
+- Use a simple numbered or plain list only when comparing 3+ items side by side.
 
-JOB DETAILS:
-Title: ${job.title}
-Description: ${job.description}
-Requirements/Skills: ${job.skills.join(", ")}
-Experience Required: ${job.experience} years
-Education: ${job.education}
+What you help with:
+- Candidate evaluation and comparison using the applicant pool below
+- Drafting job descriptions
+- Screening strategy and interview questions
+- Navigating the Umurava platform
 
-CURRENT APPLICANT POOL (${applicants.length} candidates):
-${JSON.stringify(candidateContext, null, 2)}
+Navigation: If the user wants to go somewhere ("take me to...", "open...", "go to..."), reply with only: "Taking you there now!" — nothing else.
 
-INSTRUCTIONS:
-1. You are the authoritative system for ranking these applicants. 
-2. Provide strategic advice on how to find the best candidates.
-3. Compare candidates based on the job requirements.
-4. Use the AI scores and summaries provided as a baseline for your analysis.
-5. If the recruiter asks for "Top 10" or similar, refer to the scores you've calculated.
-6. Be professional, insightful, and helpful.
-7. Since email and phone are provided, you can reference them if asked for contact details.`;
+If a question is unrelated to recruitment, respond naturally like a human would — something like "Ha, I wish I could help with that! I'm only good with recruitment stuff though. Anything hiring-related I can help you with?" — keep it light and friendly, then redirect.
+
+Job: ${job.title}
+Skills needed: ${job.skills.join(", ")}
+Experience: ${job.experience} years
+
+Applicants (${applicants.length} total):
+${JSON.stringify(candidateContext, null, 2)}`;
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -125,26 +127,61 @@ INSTRUCTIONS:
 
       const chatHistory: ChatMessage[] = history || [];
 
-      // Using system_instruction for better adherence to focus
-      const response = await axios.post(
-        `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${apiKey}`,
-        {
-          contents: [
-            ...chatHistory,
-            { role: "user", parts: [{ text: message }] }
-          ],
-          system_instruction: {
-            parts: [{ text: systemContext }]
-          },
-          generationConfig: { temperature: 0.7 },
-        }
-      );
+      // Using callGemini utility for robust model/version fallback
+      const aiResponse = await callGemini({
+        contents: [
+          ...chatHistory,
+          { role: "user", parts: [{ text: message }] }
+        ],
+        system_instruction: {
+          parts: [{ text: systemContext }]
+        },
+        generationConfig: { temperature: 0.3 },
+      }, {
+        preferredModel: modelName
+      });
 
-      const aiResponse = extractTextFromGeminiResponse(response);
+      // Strip markdown artifacts that Gemini sometimes leaks
+      const cleanResponse = aiResponse
+        .replace(/\*\*?/g, "")       // remove * and **
+        .replace(/#{1,6}\s?/g, "")   // remove # headers
+        .replace(/^[-*]\s/gm, "")    // remove leading bullet dashes
+        .replace(/\n{3,}/g, "\n\n")  // collapse excess newlines
+        .trim();
+
+      // Detect navigation intent from AI response and return a route
+      const navigationMap: Record<string, string> = {
+        "/screening": "/screening",
+        "screening page": "/screening",
+        "/jobs/create": "/jobs/create",
+        "post a job": "/jobs/create",
+        "create a job": "/jobs/create",
+        "/jobs": "/jobs",
+        "jobs page": "/jobs",
+        "/applicants": "/applicants",
+        "applicants page": "/applicants",
+        "/shortlists": "/shortlists",
+        "shortlists page": "/shortlists",
+        "/notifications": "/notifications",
+        "notifications page": "/notifications",
+        "/profile": "/profile",
+        "profile page": "/profile",
+        "/settings": "/settings",
+        "settings page": "/settings",
+      };
+
+      const lowerMessage = message.toLowerCase();
+      let navigateTo: string | undefined;
+      for (const [keyword, route] of Object.entries(navigationMap)) {
+        if (lowerMessage.includes(keyword)) {
+          navigateTo = route;
+          break;
+        }
+      }
 
       res.status(200).json({
-        message: aiResponse,
-        // Optionally return history
+        message: cleanResponse,
+        ...(navigateTo && { navigate: navigateTo }),
       });
 
     } catch (error) {

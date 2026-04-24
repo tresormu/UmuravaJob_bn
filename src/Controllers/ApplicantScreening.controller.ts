@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import axios from "axios";
+import { callGemini } from "../utils/gemini.js";
 import * as xlsx from "xlsx";
 import { Types } from "mongoose";
 import { PDFParse } from "pdf-parse";
@@ -173,59 +174,59 @@ const extractJsonFromGeminiText = (raw: string): string => {
 	return cleaned;
 };
 
+const normalizeProfile = (parsed: any): ApplicantScreeningProfile => {
+	const safe = parsed || {};
+	return {
+		personaInfo: {
+			firstName: "", lastName: "", email: "", headline: "", location: "",
+			...(typeof safe.personaInfo === 'object' ? safe.personaInfo : {}),
+		},
+		skills: Array.isArray(safe.skills) ? safe.skills : [],
+		languages: Array.isArray(safe.languages) ? safe.languages : [],
+		workExperience: Array.isArray(safe.workExperience) ? safe.workExperience : [],
+		education: Array.isArray(safe.education) ? safe.education : [],
+		certifications: Array.isArray(safe.certifications) ? safe.certifications : [],
+		projects: Array.isArray(safe.projects) ? safe.projects : [],
+		socialLinks: { 
+			linkedin: "", github: "", portfolio: "", 
+			...(typeof safe.socialLinks === 'object' ? safe.socialLinks : {})
+		},
+		availability: { 
+			status: "Not Available", type: "Full-time", 
+			...(typeof safe.availability === 'object' ? safe.availability : {})
+		},
+	};
+};
+
 const extractApplicantProfileWithGemini = async (
 	resumeText: string,
+	fileBuffer?: Buffer,
+	mimeType?: string,
 ): Promise<ApplicantScreeningProfile> => {
-	const apiKey = process.env.GEMINI_API_KEY;
-	if (!apiKey) {
-		throw new Error("GEMINI_API_KEY is required for applicant screening");
+	const prompt = `You are an applicant screening assistant.\n\nExtract the candidate profile from the resume and return ONLY valid JSON with this exact shape and keys:\n{\n  "personaInfo": {\n    "firstName": "",\n    "lastName": "",\n    "email": "",\n    "headline": "",\n    "location": ""\n  },\n  "skills": [{ "name": "", "level": "Beginner|Intermediate|Advanced|Expert", "yearsOfExperience": 0 }],\n  "languages": [{ "name": "", "proficiency": "Basic|Conversational|Fluent|Native" }],\n  "workExperience": [{ "company": "", "role": "", "startDate": "YYYY-MM", "endDate": "YYYY-MM|Present", "description": "", "technologies": [""], "isCurrent": false }],\n  "education": [{ "institution": "", "degree": "", "fieldOfStudy": "", "startYear": 0, "endYear": 0 }],\n  "certifications": [{ "name": "", "issuer": "", "issueDate": "YYYY-MM" }],\n  "projects": [{ "name": "", "description": "", "technologies": [""], "role": "", "link": "", "startDate": "YYYY-MM", "endDate": "YYYY-MM" }],\n  "socialLinks": { "linkedin": "", "github": "", "portfolio": "" },\n  "availability": { "status": "Available|Open to Opportunities|Not Available", "type": "Full-time|Part-time|Contract", "startDate": "YYYY-MM-DD" }\n}\n\nRules:\n- Use empty string for unknown scalar fields and empty array for unknown lists.\n- Keep enums strictly within allowed values.\n- Do not include markdown or explanations.\n\n${resumeText ? `Resume text:\n${resumeText}` : "Please analyze the provided document directly."}`;
+	
+	const parts: any[] = [{ text: prompt }];
+	if (fileBuffer && mimeType) {
+		parts.push({
+			inlineData: {
+				mimeType,
+				data: fileBuffer.toString("base64")
+			}
+		});
 	}
 
-	const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash-latest";
-	const apiVersion = "v1beta";
-
-	console.log(`[AI-Screening] Triggering Gemini extraction: model=${modelName}, version=${apiVersion}`);
-
-	const prompt = `You are an applicant screening assistant.\n\nExtract the candidate profile from the resume text and return ONLY valid JSON with this exact shape and keys:\n{\n  "personaInfo": {\n    "firstName": "",\n    "lastName": "",\n    "email": "",\n    "headline": "",\n    "location": ""\n  },\n  "skills": [{ "name": "", "level": "Beginner|Intermediate|Advanced|Expert", "yearsOfExperience": 0 }],\n  "languages": [{ "name": "", "proficiency": "Basic|Conversational|Fluent|Native" }],\n  "workExperience": [{ "company": "", "role": "", "startDate": "YYYY-MM", "endDate": "YYYY-MM|Present", "description": "", "technologies": [""], "isCurrent": false }],\n  "education": [{ "institution": "", "degree": "", "fieldOfStudy": "", "startYear": 0, "endYear": 0 }],\n  "certifications": [{ "name": "", "issuer": "", "issueDate": "YYYY-MM" }],\n  "projects": [{ "name": "", "description": "", "technologies": [""], "role": "", "link": "", "startDate": "YYYY-MM", "endDate": "YYYY-MM" }],\n  "socialLinks": { "linkedin": "", "github": "", "portfolio": "" },\n  "availability": { "status": "Available|Open to Opportunities|Not Available", "type": "Full-time|Part-time|Contract", "startDate": "YYYY-MM-DD" }\n}\n\nRules:\n- Use empty string for unknown scalar fields and empty array for unknown lists.\n- Keep enums strictly within allowed values.\n- Do not include markdown or explanations.\n\nResume text:\n${resumeText}`;
-
 	try {
-		const response = await axios.post(
-			`https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${apiKey}`,
-			{
-				contents: [{ parts: [{ text: prompt }] }],
-				generationConfig: {
-					temperature: 0.1,
-				},
-			},
-			{
-				timeout: 40000, // 40 seconds timeout
-			},
-		);
-
-		const rawText =
-			response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-		if (!rawText) {
-			console.error("[AI-Screening] Empty response from Gemini");
-			throw new Error("Gemini returned an empty response");
-		}
-
-		console.log("[AI-Screening] Successfully extracted profile from Gemini");
+		const rawText = await callGemini({
+			contents: [{ parts }],
+			generationConfig: { temperature: 0.1 }
+		});
+		console.log("[AI-Screening] Successfully extracted profile from Gemini (multi-modal)");
 		const jsonText = extractJsonFromGeminiText(String(rawText));
-		const parsed = JSON.parse(jsonText) as ApplicantScreeningProfile;
-		return parsed;
+		const parsed = JSON.parse(jsonText) as Partial<ApplicantScreeningProfile>;
+		return normalizeProfile(parsed);
 	} catch (error) {
-		if (axios.isAxiosError(error)) {
-			const statusCode = error.response?.status;
-			const upstreamMessage =
-				typeof error.response?.data === "string"
-					? error.response.data
-					: JSON.stringify(error.response?.data ?? {});
-			console.error(`[AI-Screening] Gemini call failed (${statusCode}):`, upstreamMessage);
-			throw new Error(`Gemini Error: ${upstreamMessage}`);
-		} else {
-			console.error("[AI-Screening] Processing error:", error);
-			throw error instanceof Error ? error : new Error("Unknown error in AI screening");
-		}
+		console.error("[AI-Screening] Gemini call failed:", error instanceof Error ? error.message : error);
+		throw new Error(error instanceof Error ? error.message : "AI Screening failed");
 	}
 };
 
@@ -258,23 +259,33 @@ class ApplicantScreeningController {
 		const finalJobId = new Types.ObjectId(jobId);
 		const finalRecruiterId = new Types.ObjectId(recruiterId);
 
-		console.log(`[Screening] STEP 1: Initializing Parser - ${file.originalname}`);
-		const uint8Array = new Uint8Array(file.buffer.buffer, file.buffer.byteOffset, file.buffer.byteLength);
-		const parser = new PDFParse({ data: uint8Array });
-
-		console.log(`[Screening] STEP 2: Extracting Text - ${file.originalname}`);
-		const parsed = await parser.getText();
+		console.log(`[Screening] STEP 1: Parsing PDF - ${file.originalname}`);
+		// Explicitly convert to Uint8Array for maximum compatibility with pdfjs-dist
+		const parser = new PDFParse({ data: new Uint8Array(file.buffer) });
+		
+		// Use default parameters to ensure standard text extraction
+		const pdfData = await parser.getText();
 		await parser.destroy();
 
-		const extractedText = parsed.text?.trim() ?? "";
-		if (!extractedText) {
-			console.error(`[Screening] FAILED: No text found in ${file.originalname}`);
-			throw new Error("No readable text found in PDF. Is this document a secure or scanned image?");
-		}
-		console.log(`[Screening] STEP 3: Text Extracted (${extractedText.length} chars) - ${file.originalname}`);
+		const extractedText = (pdfData.text || "").trim();
+		const pages = pdfData.total || 0;
 
-		console.log(`[Screening] Text extracted (${extractedText.length} chars). Sending to AI...`);
-		const applicantProfile = await extractApplicantProfileWithGemini(extractedText);
+		console.log(`[Screening] Extraction Result: ${pages} pages found, ${extractedText.length} characters extracted.`);
+
+		if (pages === 0) {
+			throw new Error("The PDF document could not be loaded or has 0 pages. It may be corrupted or an invalid format.");
+		}
+
+		if (extractedText.length < 50) {
+			console.warn(`[Screening] Warning: Very little text found (${extractedText.length} chars). Gemini will analyze the PDF directly.`);
+		}
+
+		console.log(`[Screening] STEP 2: Extracting profile using AI - ${file.originalname}`);
+		const applicantProfile = await extractApplicantProfileWithGemini(
+			extractedText, 
+			file.buffer, 
+			file.mimetype
+		);
 
 		const applicantDoc = await new Applicant({
 			jobId: finalJobId,
@@ -303,7 +314,7 @@ class ApplicantScreeningController {
 		return {
 			applicantId: applicantDoc._id,
 			fileName: file.originalname,
-			pages: parsed.pages.length,
+			pages,
 			extractedText,
 			applicantProfile,
 			savedApplicant,

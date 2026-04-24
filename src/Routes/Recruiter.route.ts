@@ -10,6 +10,8 @@ router.post("/auth/refresh", RecruiterController.refreshRecruiterToken);
 router.post("/auth/logout", RecruiterController.logoutRecruiter);
 router.post("/auth/verify-email", RecruiterController.verifyRecruiterEmail);
 router.post("/auth/resend-verification", RecruiterController.resendVerificationCode);
+router.post("/auth/request-delete", protect, RecruiterController.requestDeleteAccount);
+router.post("/auth/confirm-delete", protect, RecruiterController.confirmDeleteAccount);
 
 // CRUD Routes for Recruiters
 router.get("/", RecruiterController.getRecruiter);
